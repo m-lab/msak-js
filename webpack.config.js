@@ -6,7 +6,12 @@ const config = {
   entry: './src/msak.js',
   output: {
     path: path.resolve(__dirname, 'dist'),
-    filename: 'bundle.js'
+    filename: 'bundle.js',
+    library: {
+      type: 'umd',
+      name: 'msak',
+    },
+    globalObject: 'this',
   },
   module: {
     rules: [
