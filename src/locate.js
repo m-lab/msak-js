@@ -1,3 +1,8 @@
+const staticMetadata = {
+    'client_library_name': 'msak-js',
+    'client_library_version': '0.0.1'
+};
+
 /**
  * discoverServerURLs contacts a web service (likely the Measurement Lab
  * locate service, but not necessarily) and gets URLs with access tokens in
@@ -11,8 +16,11 @@
  * @name discoverServerURLs
  * @public
  */
-export async function discoverServerURLs(config) {
+export async function discoverServerURLs(config, userCallbacks) {
     let protocol = "wss";
+
+    config.metadata = Object.assign({}, config.metadata);
+    config.metadata = Object.assign(config.metadata, staticMetadata);
 
     const metadata = new URLSearchParams(config.metadata);
 
@@ -36,8 +44,7 @@ export async function discoverServerURLs(config) {
     // run the measurement. When there are multiple pods in the same metro,
     // they are randomized by the load balancer already.
     const choice = js.results[0];
-    console.log("Server chosen: ");
-    console.log(choice);
+    userCallbacks.serverChosen(choice);
 
     return {
         "///throughput/v1/download": choice.urls[protocol + ":///throughput/v1/download"],

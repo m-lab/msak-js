@@ -7,5 +7,12 @@
 </head>
 <body>
     <script src="dist/bundle.js" type="text/javascript"></script>
+    <script>
+    msak.test({}, {
+        serverChosen: function(server) {
+            console.log("Server chosen:", server);
+        }
+    });
+    </script>
 </body>
 </html>
