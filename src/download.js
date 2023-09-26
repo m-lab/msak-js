@@ -1,6 +1,10 @@
 const workerMain = function(ev) {
-  const url = ev.data['///throughput/v1/download'];
+  const url = new URL(ev.data['///throughput/v1/download']);
+
+  url.search += '&streams=1';
+  console.log(url.search);
   const sock = new WebSocket(url, 'net.measurementlab.throughput.v1');
+
   let now;
   if (typeof performance !== 'undefined' &&
       typeof performance.now === 'function') {
@@ -58,6 +62,7 @@ const downloadTest = function(sock, postMessage, now) {
                 ElapsedTime: (t - start) * 1000,
             };
 
+            console.log(measurement)
             sock.send(measurement);
 
             postMessage({
@@ -70,6 +75,7 @@ const downloadTest = function(sock, postMessage, now) {
 
         // Pass along every server-side measurement.
         if (typeof ev.data === 'string') {
+            console.log(ev.data);
             postMessage({
                 MsgType: 'measurement',
                 ServerMeasurement: ev.data,

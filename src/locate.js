@@ -1,6 +1,6 @@
 const staticMetadata = {
     'client_library_name': 'msak-js',
-    'client_library_version': '0.0.1'
+    'client_library_version': '0.0.1',
 };
 
 /**
