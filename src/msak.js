@@ -1,5 +1,7 @@
 import { discoverServerURLs } from './locate.js';
 
+let bytesMap = {};
+
 // cb creates a default-empty callback function, allowing library users to
 // only need to specify callback functions for the events they care about.
 //
@@ -20,11 +22,15 @@ const defaultErrCallback = function (err) {
   throw new Error(err);
 };
 
-const runWorker = async function(config, callbacks, urlPromise, filename) {
+const runWorker = async function(streamid, globalStartTime, config, callbacks,
+    urlPromise, filename, testType) {
     console.log(filename);
-      // This makes the worker. The worker won't actually start until it
+    // This makes the worker. The worker won't actually start until it
     // receives a message.
     const worker = new Worker(filename);
+
+    let serverMeasurement;
+    let clientMeasurement;
     
     worker.resolve = function (returnCode) {
         if (returnCode == 0) {
@@ -39,6 +45,53 @@ const runWorker = async function(config, callbacks, urlPromise, filename) {
     // timeout of 15 seconds. This makes sure uploads terminate on time and
     // get a chance to send one last measurement after 10s.
     const workerTimeout = setTimeout(() => worker.resolve(0), 12000);
+
+
+    // This is how the worker communicates back to the main thread of
+    // execution.  The MsgTpe of `ev` determines which callback the message
+    // gets forwarded to.
+    worker.onmessage = function(ev) {
+      if (!ev.data || !ev.data.MsgType || ev.data.MsgType === 'error') {
+        clearTimeout(workerTimeout);
+        worker.resolve(1);
+        const msg = (!ev.data) ? `error` : ev.data.Error;
+        callbacks.error(streamid, msg);
+      } else if (ev.data.MsgType === 'start') {
+        callbacks.start(streamid, ev.data.Data);
+      } else if (ev.data.MsgType == 'measurement') {
+        // For performance reasons, we parse the JSON outside of the thread
+        // doing the downloading or uploading.
+        if (ev.data.Source == 'server') {
+          serverMeasurement = JSON.parse(ev.data.ServerMeasurement);
+          callbacks.measurement({
+            StreamID: streamid, 
+            Source: ev.data.Source,
+            Data: serverMeasurement,
+          });
+        } else {
+          clientMeasurement = ev.data.ClientMeasurement;
+          if (testType === 'download') {
+            bytesMap[streamid] = clientMeasurement.Application.BytesReceived;
+            let elapsed = performance.now() - globalStartTime;
+            let sum = 0;
+            Object.values(bytesMap).forEach(v => {
+              sum += v;
+            });
+
+            let goodput = sum / ( elapsed * 1000 ) * 8;
+            console.log(goodput);
+          }
+          callbacks.measurement({
+            StreamID: streamid,
+            Source: ev.data.Source,
+            Data: clientMeasurement,
+          });
+        }
+      } else if (ev.data.MsgType == 'close') {
+        clearTimeout(workerTimeout);
+        worker.resolve(0);
+      }
+    };
     
     // We can't start the worker until we know the right server, so we wait
     // here to find that out.
@@ -61,7 +114,19 @@ export async function download(config, userCallbacks, urlPromise) {
         complete: cb('downloadComplete', userCallbacks),
     }
     const workerfile = config.downloadWorkerFile || new URL('download.js', import.meta.url);
-    runWorker(config, callbacks, urlPromise, workerfile, 'download');
+
+    let streams = 2;
+    if (typeof config.streams !== 'undefined') {
+      streams = config.streams;
+    }
+
+    console.log(streams);
+    
+    let globalStartTime = performance.now();
+
+    for (let i = 0; i < streams; i++) {
+      runWorker(i, globalStartTime, config, callbacks, urlPromise, workerfile, 'download');
+    }
 }
 
 export async function test(config, userCallbacks) {
