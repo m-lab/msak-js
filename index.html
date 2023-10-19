@@ -8,13 +8,15 @@
 <body>
     <script src="dist/bundle.js" type="text/javascript"></script>
     <script>
-    msak.test({}, {
+    msak.test({
+        streams: 4,
+    }, {
         serverChosen: function(server) {
             console.log("Server chosen:", server);
         },
         downloadMeasurement: function(data) {
             console.log(data);
-        }
+        },
     });
     </script>
 </body>

@@ -62,7 +62,12 @@ const runWorker = async function(streamid, globalStartTime, config, callbacks,
         // For performance reasons, we parse the JSON outside of the thread
         // doing the downloading or uploading.
         if (ev.data.Source == 'server') {
+          
           serverMeasurement = JSON.parse(ev.data.ServerMeasurement);
+          if (testType === 'upload') {
+            bytesMap[streamid] = serverMeasurement.Application.BytesReceived;
+          }
+
           callbacks.measurement({
             StreamID: streamid, 
             Source: ev.data.Source,
@@ -72,14 +77,6 @@ const runWorker = async function(streamid, globalStartTime, config, callbacks,
           clientMeasurement = ev.data.ClientMeasurement;
           if (testType === 'download') {
             bytesMap[streamid] = clientMeasurement.Application.BytesReceived;
-            let elapsed = performance.now() - globalStartTime;
-            let sum = 0;
-            Object.values(bytesMap).forEach(v => {
-              sum += v;
-            });
-
-            let goodput = sum / ( elapsed * 1000 ) * 8;
-            console.log(goodput);
           }
           callbacks.measurement({
             StreamID: streamid,
@@ -87,6 +84,16 @@ const runWorker = async function(streamid, globalStartTime, config, callbacks,
             Data: clientMeasurement,
           });
         }
+
+        let elapsed = performance.now() - globalStartTime;
+        let sum = 0;
+        Object.values(bytesMap).forEach(v => {
+          sum += v;
+        });
+
+        let goodput = sum / ( elapsed * 1000 ) * 8;
+        console.log(goodput);
+
       } else if (ev.data.MsgType == 'close') {
         clearTimeout(workerTimeout);
         worker.resolve(0);
@@ -103,6 +110,7 @@ const runWorker = async function(streamid, globalStartTime, config, callbacks,
     });
 
     // Start the worker.
+    console.log(urls)
     worker.postMessage(urls);
 }
 
@@ -129,8 +137,33 @@ export async function download(config, userCallbacks, urlPromise) {
     }
 }
 
+
+export async function upload(config, userCallbacks, urlPromise) {
+  const callbacks = {
+      error: cb('error', userCallbacks, defaultErrCallback),
+      start: cb('uploadStart', userCallbacks),
+      measurement: cb('uploadMeasurement', userCallbacks),
+      complete: cb('uploadComplete', userCallbacks),
+  }
+  const workerfile = config.uploadWorkerFile || new URL('upload.js', import.meta.url);
+
+  let streams = 2;
+  if (typeof config.streams !== 'undefined') {
+    streams = config.streams;
+  }
+
+  console.log(streams);
+  
+  let globalStartTime = performance.now();
+
+  for (let i = 0; i < streams; i++) {
+    runWorker(i, globalStartTime, config, callbacks, urlPromise, workerfile, 'upload');
+  }
+}
+
 export async function test(config, userCallbacks) {
     const urlPromise = discoverServerURLs(config, userCallbacks);
-    const downloadResult = await download(config, userCallbacks, urlPromise);
-    return downloadResult;
+    //const downloadResult = await download(config, userCallbacks, urlPromise);
+    const uploadResult = await upload(config, userCallbacks, urlPromise);
+    return uploadResult;
 }
