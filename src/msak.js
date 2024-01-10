@@ -1,5 +1,4 @@
 import { discoverServerURLs } from "./locate";
-import { defaultErrCallback } from "./callbacks";
 import * as consts from "./consts";
 
 /**
@@ -46,6 +45,10 @@ export class Client {
         this.callbacks = {};
     }
 
+    //
+    // Setters
+    //
+
     /**
      * @param {boolean} value - Whether to print debug messages to the console.
      */
@@ -84,6 +87,10 @@ export class Client {
         }
         this.protocol = value;
     }
+
+    //
+    // Private methods
+    //
 
     /**
      * 
@@ -142,6 +149,8 @@ export class Client {
             "///throughput/v1/upload": uploadURL.toString()
         };
     }
+
+    // Public methods
 
     /**
      * Retrieves the next download/upload URL pair from the Locate service. On
@@ -218,7 +227,7 @@ export class Client {
     async runWorker(workerfile, serverURL) {
         const worker = new Worker(workerfile);
 
-        const workerTimeout = setTimeout(() => worker.terminate(), 10000);
+        setTimeout(() => worker.terminate(), this._duration);
         worker.onmessage = (ev) => this.#handleWorkerEvent(ev);
         worker.postMessage(serverURL.toString());
 
