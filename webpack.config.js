@@ -6,13 +6,14 @@ const config = {
   entry: './src/msak.js',
   output: {
     path: path.resolve(__dirname, 'dist'),
-    filename: 'bundle.js',
+    filename: 'msak.js',
     library: {
       type: 'umd',
       name: 'msak',
     },
     globalObject: 'this',
   },
+  devtool: 'source-map',
   module: {
     rules: [
       {
@@ -23,7 +24,7 @@ const config = {
     ]
   },
   plugins: [
-    new CleanWebpackPlugin()
+    new CleanWebpackPlugin(),
   ]
 };
 
