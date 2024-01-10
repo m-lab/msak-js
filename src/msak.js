@@ -1,169 +1,209 @@
-import { discoverServerURLs } from './locate.js';
+import { discoverServerURLs } from "./locate";
+import { defaultErrCallback } from "./callbacks";
+import * as consts from "./consts";
 
-let bytesMap = {};
+/**
+ * Client is a client for the MSAK test protocol.
+ */
+export class Client {
+    /**
+     * 
+     * Client is a client for the MSAK test protocol. Client name and version
+     * are mandatory and passed to the server as metadata.
+     * 
+     * @param {string} clientName - A unique name for this client.
+     * @param {string} clientVersion - The client's version.
+     */
+    constructor(clientName, clientVersion) {
+        if (!clientName || !clientVersion)
+            throw new Error("client name and version are required");
 
-// cb creates a default-empty callback function, allowing library users to
-// only need to specify callback functions for the events they care about.
-//
-// This function is not exported.
-const cb = function (name, callbacks, defaultFn) {
-  if (typeof (callbacks) !== 'undefined' && name in callbacks) {
-    return callbacks[name];
-  } else if (typeof defaultFn !== 'undefined') {
-    return defaultFn;
-  } else {
-    // If no default function is provided, use the empty function.
-    return function () { };
-  }
-};
+        this.clientName = clientName;
+        this.clientVersion = clientVersion;
+        this.metadata = {};
+        this._cc = consts.DEFAULT_CC;
+        this._protocol = consts.DEFAULT_SCHEME;
+        this._streams = consts.DEFAULT_STREAMS;
+        this._duration = consts.DEFAULT_DURATION;
+        this._server = "";
 
-// The default response to an error is to throw an exception.
-const defaultErrCallback = function (err) {
-  throw new Error(err);
-};
+        this._locateCache = [];
 
-const runWorker = async function(streamid, globalStartTime, config, callbacks,
-    urlPromise, filename, testType) {
-    console.log(filename);
-    // This makes the worker. The worker won't actually start until it
-    // receives a message.
-    const worker = new Worker(filename);
+        /**
+         * Bytes received across all streams.
+         * @type {number}
+         * @public
+         */
+        this.bytesReceived = 0;
 
-    let serverMeasurement;
-    let clientMeasurement;
-    
-    worker.resolve = function (returnCode) {
-        if (returnCode == 0) {
-            callbacks.complete();
-        }
-        worker.terminate();
+        /**
+         * Bytes sent across all streams.
+         * @type {number}
+         * @public
+         */
+        this.bytesSent = 0;
+
+        this.callbacks = {};
     }
 
-    // If the worker takes 12 seconds, kill it and return an error code.
-    // Most clients take longer than 10 seconds to complete the upload and
-    // finish sending the buffer's content, sometimes hitting the socket's
-    // timeout of 15 seconds. This makes sure uploads terminate on time and
-    // get a chance to send one last measurement after 10s.
-    const workerTimeout = setTimeout(() => worker.resolve(0), 12000);
+    /**
+     * @param {boolean} value - Whether to print debug messages to the console.
+     */
+    set debug(value) {
+        this._debug = value;
+    }
 
+    /**
+     * @param {number} value - The number of streams to use.
+     * Must be between 1 and 4.
+     */
+    set streams(value) {
+        if (value <= 0 || value > 4) {
+            throw new Error("number of streams must be between 1 and 4");
+        }
+        this.streams = value;
+    }
 
-    // This is how the worker communicates back to the main thread of
-    // execution.  The MsgTpe of `ev` determines which callback the message
-    // gets forwarded to.
-    worker.onmessage = function(ev) {
-      if (!ev.data || !ev.data.MsgType || ev.data.MsgType === 'error') {
-        clearTimeout(workerTimeout);
-        worker.resolve(1);
-        const msg = (!ev.data) ? `error` : ev.data.Error;
-        callbacks.error(streamid, msg);
-      } else if (ev.data.MsgType === 'start') {
-        callbacks.start(streamid, ev.data.Data);
-      } else if (ev.data.MsgType == 'measurement') {
-        // For performance reasons, we parse the JSON outside of the thread
-        // doing the downloading or uploading.
-        if (ev.data.Source == 'server') {
-          
-          serverMeasurement = JSON.parse(ev.data.ServerMeasurement);
-          if (testType === 'upload') {
-            bytesMap[streamid] = serverMeasurement.Application.BytesReceived;
-          }
+    /**
+     * @param {number} value - The number of streams to use.
+     * Must be between 1 and 4.
+     */
+    set cc(value) {
+        if (consts.SUPPORTED_CC_ALGORITHMS.includes(value)) {
+            throw new Error("number of streams must be between 1 and 4");
+        }
+        this.streams = value;
+    }
 
-          callbacks.measurement({
-            StreamID: streamid, 
-            Source: ev.data.Source,
-            Data: serverMeasurement,
-          });
+    /**
+     * @param {string} value - The protocol to use. Must be 'ws' or 'wss'.
+     */
+    set protocol(value) {
+        if (value !== 'ws' && value !== 'wss') {
+            throw new Error("protocol must be 'ws' or 'wss'");
+        }
+        this.protocol = value;
+    }
+
+    /**
+     * 
+     * @param {Object} obj - The object to print to the console.
+     */
+    #debug(obj) {
+        if (this._debug) console.log(obj);
+    }
+
+    #makeSearchParams() {
+        let sp = new URLSearchParams();
+        sp.set("client_name", this.clientName);
+        sp.set("client_version", this.clientVersion);
+        sp.set("client_library_name", consts.LIBRARY_NAME);
+        sp.set("client_library_version", consts.LIBRARY_VERSION);
+        sp.set("streams", this._streams.toString());
+        sp.set("cc", this._cc);
+        if (this.metadata) {
+            for (const [key, value] of Object.entries(this.metadata)) {
+                sp.set(key, value);
+            }
+        }
+        return sp;
+    }
+
+    #makeURLPairForServer(server) {
+        const downloadURL = new URL(this._protocol + "://" + server + consts.DOWNLOAD_PATH);
+        const uploadURL = new URL(this._protocol + "://" + server + consts.UPLOAD_PATH);
+
+        let sp = this.#makeSearchParams()
+        downloadURL.search = sp.toString();
+        uploadURL.search = sp.toString();
+
+        // Set protocol.
+        downloadURL.protocol = this._protocol;
+        uploadURL.protocol = this._protocol;
+
+        return {
+            "///throughput/v1/download": downloadURL.toString(),
+            "///throughput/v1/upload": uploadURL.toString()
+        };
+    }
+
+    /**
+     * Retrieves the next download/upload URL pair from the Locate service. On
+     * the first invocation, it requests new URLs for nearby servers from the
+     * Locate service. On subsequent invocations, it returns the next cached
+     * result.
+     * 
+     * All the returned URLs include protocol options and metadata in the
+     * querystring.
+     * @returns A map of two URLs - one for download, one for upload.
+     */
+    async #nextURLsFromLocate() {
+        /**
+         * Returns URLs for the download and upload endpoints including all
+         * querystring parameters.
+         * @returns {Object}  A map of URLs for the download and upload.
+         */
+        let makeURLs = () => {
+            let res = this._locateCache.shift()
+
+            let downloadURL = new URL(res.urls[this._protocol + '://' + consts.DOWNLOAD_PATH]);
+            let uploadURL = new URL(res.urls[this._protocol + '://' + consts.UPLOAD_PATH]);
+            let sp = this.#makeSearchParams()
+            downloadURL.search = sp.toString();
+            uploadURL.search = sp.toString();
+
+            return {
+                "///throughput/v1/download": downloadURL,
+                "///throughput/v1/upload": uploadURL
+            };
+        }
+
+        // If this is the first call or the cache is empty, query the Locate service.
+        if (this._locateCache.length == 0) {
+            let results = await discoverServerURLs(this.clientName, this.clientVersion)
+            this._locateCache = results;
+            return makeURLs();
         } else {
-          clientMeasurement = ev.data.ClientMeasurement;
-          if (testType === 'download') {
-            bytesMap[streamid] = clientMeasurement.Application.BytesReceived;
-          }
-          callbacks.measurement({
-            StreamID: streamid,
-            Source: ev.data.Source,
-            Data: clientMeasurement,
-          });
+            return makeURLs();
         }
-
-        let elapsed = performance.now() - globalStartTime;
-        let sum = 0;
-        Object.values(bytesMap).forEach(v => {
-          sum += v;
-        });
-
-        let goodput = sum / ( elapsed * 1000 ) * 8;
-        console.log(goodput);
-
-      } else if (ev.data.MsgType == 'close') {
-        clearTimeout(workerTimeout);
-        worker.resolve(0);
-      }
-    };
-    
-    // We can't start the worker until we know the right server, so we wait
-    // here to find that out.
-    const urls = await urlPromise.catch((err) => {
-        // Clear timer, terminate the worker and rethrow the error.
-        clearTimeout(workerTimeout);
-        worker.resolve(2);
-        throw err;
-    });
-
-    // Start the worker.
-    console.log(urls)
-    worker.postMessage(urls);
-}
-
-export async function download(config, userCallbacks, urlPromise) {
-    const callbacks = {
-        error: cb('error', userCallbacks, defaultErrCallback),
-        start: cb('downloadStart', userCallbacks),
-        measurement: cb('downloadMeasurement', userCallbacks),
-        complete: cb('downloadComplete', userCallbacks),
-    }
-    const workerfile = config.downloadWorkerFile || new URL('download.js', import.meta.url);
-
-    let streams = 2;
-    if (typeof config.streams !== 'undefined') {
-      streams = config.streams;
     }
 
-    console.log(streams);
-    
-    let globalStartTime = performance.now();
-
-    for (let i = 0; i < streams; i++) {
-      runWorker(i, globalStartTime, config, callbacks, urlPromise, workerfile, 'download');
+    /**
+     * 
+     * @param {string} [server] - The server to connect to.  If not specified,
+     * will query the Locate service to get a nearby server.
+     */
+    async start(server) {
+        let serverURLs;
+        if (server) {
+            serverURLs = this.#makeURLPairForServer(server);
+        } else {
+            serverURLs = await this.#nextURLsFromLocate();
+        }
+        this.download(serverURLs['//' + consts.DOWNLOAD_PATH]);
     }
-}
 
+    /**
+     * @param {string} serverURL
+     */
+    download(serverURL) {
+        let workerFile = this.downloadWorkerFile ||  new URL('download.js', import.meta.url);
+        this.#debug("Starting download with URL " + serverURL.toString());
+        for (let i = 0; i < this._streams; i++) {
+            this.runWorker(workerFile);
+        }
+    }
 
-export async function upload(config, userCallbacks, urlPromise) {
-  const callbacks = {
-      error: cb('error', userCallbacks, defaultErrCallback),
-      start: cb('uploadStart', userCallbacks),
-      measurement: cb('uploadMeasurement', userCallbacks),
-      complete: cb('uploadComplete', userCallbacks),
-  }
-  const workerfile = config.uploadWorkerFile || new URL('upload.js', import.meta.url);
+    #handleWorkerEvent(ev) {
+        this.#debug(ev);
+    }
 
-  let streams = 2;
-  if (typeof config.streams !== 'undefined') {
-    streams = config.streams;
-  }
+    async runWorker(workerfile) {
+        const worker = new Worker(workerfile);
 
-  console.log(streams);
-  
-  let globalStartTime = performance.now();
+        const workerTimeout = setTimeout(() => worker.terminate(), 10000);
+        worker.onmessage = (ev) => this.#handleWorkerEvent(ev);
+        worker.postMessage
 
-  for (let i = 0; i < streams; i++) {
-    runWorker(i, globalStartTime, config, callbacks, urlPromise, workerfile, 'upload');
-  }
-}
-
-export async function test(config, userCallbacks) {
-    const urlPromise = discoverServerURLs(config, userCallbacks);
-    //const downloadResult = await download(config, userCallbacks, urlPromise);
-    const uploadResult = await upload(config, userCallbacks, urlPromise);
-    return uploadResult;
+    }
 }
