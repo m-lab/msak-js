@@ -1,10 +1,8 @@
-const workerMain = function (server) {
+const workerMain = function (ev) {
 
     // Establish WebSocket connection to the URL passed by the caller.
-    const url = new URL(server);
-    url.searchParams.set('streams', ev.data.config.streams);
-    url.searchParams.set('duration', ev.data.config.duration);
-    
+    const url = new URL(ev.data);
+
     console.log("Connecting to " + url);
     const sock = new WebSocket(url, 'net.measurementlab.throughput.v1');
     console.log("Connection established");

@@ -93,14 +93,30 @@ export class Client {
         if (this._debug) console.log(obj);
     }
 
-    #makeSearchParams() {
-        let sp = new URLSearchParams();
+    /**
+     * Sets standard client metadata, protocol options and custom metadata on
+     * the provided URLSearchParams. If a URLSearchParams is not provided, a new
+     * one is created.
+     * 
+     * @param {URLSearchParams} sp - Starting URLSearchParams to modify (optional)
+     * @returns {URLSearchParams} The complete URLSearchParams
+     */
+    #setSearchParams(sp) {
+        if (!sp) {
+            sp = new URLSearchParams();
+        }
+        // Set standard client_ metadata.
         sp.set("client_name", this.clientName);
         sp.set("client_version", this.clientVersion);
         sp.set("client_library_name", consts.LIBRARY_NAME);
         sp.set("client_library_version", consts.LIBRARY_VERSION);
+        
+        // Set protocol options.
         sp.set("streams", this._streams.toString());
         sp.set("cc", this._cc);
+        sp.set('duration', this._duration.toString());
+
+        // Set additional custom metadata.
         if (this.metadata) {
             for (const [key, value] of Object.entries(this.metadata)) {
                 sp.set(key, value);
@@ -113,7 +129,7 @@ export class Client {
         const downloadURL = new URL(this._protocol + "://" + server + consts.DOWNLOAD_PATH);
         const uploadURL = new URL(this._protocol + "://" + server + consts.UPLOAD_PATH);
 
-        let sp = this.#makeSearchParams()
+        let sp = this.#setSearchParams()
         downloadURL.search = sp.toString();
         uploadURL.search = sp.toString();
 
@@ -148,9 +164,9 @@ export class Client {
 
             let downloadURL = new URL(res.urls[this._protocol + '://' + consts.DOWNLOAD_PATH]);
             let uploadURL = new URL(res.urls[this._protocol + '://' + consts.UPLOAD_PATH]);
-            let sp = this.#makeSearchParams()
-            downloadURL.search = sp.toString();
-            uploadURL.search = sp.toString();
+
+            downloadURL.search = this.#setSearchParams(downloadURL.searchParams)
+            uploadURL.search = this.#setSearchParams(uploadURL.searchParams)
 
             return {
                 "///throughput/v1/download": downloadURL,
@@ -188,9 +204,10 @@ export class Client {
      */
     download(serverURL) {
         let workerFile = this.downloadWorkerFile ||  new URL('download.js', import.meta.url);
-        this.#debug("Starting download with URL " + serverURL.toString());
+        this.#debug('Starting ' + this._streams + ' download streams with URL ' 
+            + serverURL.toString());
         for (let i = 0; i < this._streams; i++) {
-            this.runWorker(workerFile);
+            this.runWorker(workerFile, serverURL);
         }
     }
 
@@ -198,12 +215,12 @@ export class Client {
         this.#debug(ev);
     }
 
-    async runWorker(workerfile) {
+    async runWorker(workerfile, serverURL) {
         const worker = new Worker(workerfile);
 
         const workerTimeout = setTimeout(() => worker.terminate(), 10000);
         worker.onmessage = (ev) => this.#handleWorkerEvent(ev);
-        worker.postMessage
+        worker.postMessage(serverURL.toString());
 
     }
 }
