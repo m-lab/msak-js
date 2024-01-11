@@ -57,7 +57,7 @@ const downloadTest = function(sock, now) {
         bytesReceived +=
             (typeof ev.data.size !== 'undefined') ? ev.data.size : ev.data.length;
         const t = now();
-        const every = 100; // ms
+        const every = 200; // ms
 
         if (t - previous > every) {
             // Create a Measurement object.
