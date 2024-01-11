@@ -10,7 +10,19 @@
     <script>
         m = new msak.Client("msakjs-example", "0.1.0");
         m.debug = true;
+        m.cc = 'bbr';
+        m.streams = 3;
+        m.callbacks = {
+            onResult: (result) => {
+                document.getElementById("goodput-dl").innerHTML = "Download: " +
+                    result.goodput.toFixed(2) + " Mb/s";
+            },
+            onMeasurement: (measurement) => {
+                console.log(measurement);
+            }
+        }
         m.start();
     </script>
+    <div id="goodput-dl"></div>
 </body>
 </html>

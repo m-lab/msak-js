@@ -241,12 +241,24 @@ export class Client {
                 (performance.now() - this._startTime) / 1000 * 8;
 
             let elapsed = (performance.now() - this._startTime) / 1000;
+
             this.#debug('stream #' + id + ' elapsed ' + elapsed.toFixed(2)  + 's' +
                 ' application r/w: ' +
                     message.client.Application.BytesReceived + '/' +
                     message.client.Application.BytesSent +
                 ' stream goodput: ' + goodput.toFixed(2) + ' Mb/s' +
                 ' aggr goodput: ' + aggregateGoodput.toFixed(2)  + ' Mb/s');
+
+            this.callbacks.onMeasurement({
+                elapsed: elapsed,
+                stream: id,
+                goodput: goodput,
+            });
+
+            this.callbacks.onResult({
+                elapsed: elapsed,
+                goodput: aggregateGoodput
+            });
         }
     }
 
@@ -256,6 +268,5 @@ export class Client {
         setTimeout(() => worker.terminate(), this._duration);
         worker.onmessage = (ev) => this.#handleWorkerEvent(ev, streamID);
         worker.postMessage(serverURL.toString());
-
     }
 }
