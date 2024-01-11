@@ -64,18 +64,19 @@ export class Client {
         if (value <= 0 || value > 4) {
             throw new Error("number of streams must be between 1 and 4");
         }
-        this.streams = value;
+        this._streams = value;
     }
 
     /**
-     * @param {number} value - The number of streams to use.
-     * Must be between 1 and 4.
+     * @param {number} value - The congestion control algorithm to use.
+     * Must be one of the supported CC algorithms.
      */
     set cc(value) {
-        if (consts.SUPPORTED_CC_ALGORITHMS.includes(value)) {
-            throw new Error("number of streams must be between 1 and 4");
+        console.log(value);
+        if (!consts.SUPPORTED_CC_ALGORITHMS.includes(value)) {
+            throw new Error("supported algorithm are " + consts.SUPPORTED_CC_ALGORITHMS);
         }
-        this.streams = value;
+        this._cc = value;
     }
 
     /**
