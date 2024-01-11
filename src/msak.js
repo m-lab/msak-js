@@ -89,7 +89,7 @@ export class Client {
         if (value !== 'ws' && value !== 'wss') {
             throw new Error("protocol must be 'ws' or 'wss'");
         }
-        this.protocol = value;
+        this._protocol = value;
     }
 
     //
