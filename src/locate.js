@@ -1,9 +1,9 @@
-import { DEFAULT_LB_URL as DEFAULT_LOCATE_BASE_URL, LB_RESOURCE_PATH, LIBRARY_NAME, LIBRARY_VERSION } from "./consts";
+import { LB_BASE_URL, LB_RESOURCE_PATH, LIBRARY_NAME, LIBRARY_VERSION } from "./consts";
 
 /**
  * discoverServerURLs contacts a web service (likely the Measurement Lab
  * locate service, but not necessarily) and gets URLs with access tokens in
- * them for the client. 
+ * them for the client.
  *
  * @param {string} clientName - The name of the client.
  * @param {string} clientVersion - The client version.
@@ -17,10 +17,10 @@ import { DEFAULT_LB_URL as DEFAULT_LOCATE_BASE_URL, LB_RESOURCE_PATH, LIBRARY_NA
  */
 export async function discoverServerURLs(clientName, clientVersion, lbBaseURL) {
     if (!lbBaseURL) {
-        lbBaseURL = DEFAULT_LOCATE_BASE_URL
+        lbBaseURL = LB_BASE_URL
     }
     const lbURL = new URL(lbBaseURL + LB_RESOURCE_PATH);
-    
+
     // Pass client/library name and versions to the load balancer in the
     // querystring.
     const params = new URLSearchParams();
@@ -48,7 +48,7 @@ export async function discoverServerURLs(clientName, clientVersion, lbBaseURL) {
     // in cases where we have a single pod in a metro, that pod is used to
     // run the measurement. When there are multiple pods in the same metro,
     // they are randomized by the load balancer already.
-    
+
     console.log(js.results);
 
     return js.results;
