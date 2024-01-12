@@ -1,14 +1,13 @@
-const staticMetadata = {
-    'client_library_name': 'msak-js',
-    'client_library_version': '0.0.1',
-};
+import { LOCATE_BASE_URL, LOCATE_RESOURCE_PATH, LIBRARY_NAME, LIBRARY_VERSION } from "./consts";
 
 /**
  * discoverServerURLs contacts a web service (likely the Measurement Lab
  * locate service, but not necessarily) and gets URLs with access tokens in
- * them for the client. 
+ * them for the client.
  *
- * @param {Object} config - An associative array of configuration options.
+ * @param {string} clientName - The name of the client.
+ * @param {string} clientVersion - The client version.
+ * @param {string} [lbBaseURL] - The base URL of the load balancer. (optional)
  *
  * It uses the callback functions `error`, `serverDiscovery`, and
  * `serverChosen`.
@@ -16,20 +15,26 @@ const staticMetadata = {
  * @name discoverServerURLs
  * @public
  */
-export async function discoverServerURLs(config, userCallbacks) {
-    let protocol = "wss";
+export async function discoverServerURLs(clientName, clientVersion, lbBaseURL) {
+    if (!lbBaseURL) {
+        lbBaseURL = LOCATE_BASE_URL
+    }
+    const lbURL = new URL(lbBaseURL + LOCATE_RESOURCE_PATH);
 
-    config.metadata = Object.assign({}, config.metadata);
-    config.metadata = Object.assign(config.metadata, staticMetadata);
+    // Pass client/library name and versions to the load balancer in the
+    // querystring.
+    const params = new URLSearchParams();
+    params.set('client_name', clientName);
+    params.set('client_version', clientVersion);
+    params.set("client_library_name", LIBRARY_NAME);
+    params.set('client_library_version', LIBRARY_VERSION)
 
-    const metadata = new URLSearchParams(config.metadata);
-
-    const lbURL = (config && ("loadbalancer" in config)) ? config.loadbalancer : new URL("https://locate.measurementlab.net/v2/nearest/msak/throughput1");
-    lbURL.search = metadata;
+    lbURL.search = params.toString();
 
     const response = await fetch(lbURL).catch((err) => {
         throw new Error(err);
     });
+
     const js = await response.json();
     if (!("results" in js)) {
         console.log(`Could not understand response from ${lbURL}: ${js}`);
@@ -43,11 +48,8 @@ export async function discoverServerURLs(config, userCallbacks) {
     // in cases where we have a single pod in a metro, that pod is used to
     // run the measurement. When there are multiple pods in the same metro,
     // they are randomized by the load balancer already.
-    const choice = js.results[0];
-    userCallbacks.serverChosen(choice);
 
-    return {
-        "///throughput/v1/download": choice.urls[protocol + ":///throughput/v1/download"],
-        "///throughput/v1/upload": choice.urls[protocol + ":///throughput/v1/upload"],
-    };
+    console.log(js.results);
+
+    return js.results;
 }

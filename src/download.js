@@ -1,23 +1,34 @@
-const workerMain = function(ev) {
-  const url = new URL(ev.data['///throughput/v1/download']);
+const workerMain = function (ev) {
 
-  url.search += '&streams=1';
-  url.search += '&duration=5000'
-  console.log(url.search);
-  const sock = new WebSocket(url, 'net.measurementlab.throughput.v1');
+    // Establish WebSocket connection to the URL passed by the caller.
+    const url = new URL(ev.data);
 
-  let now;
-  if (typeof performance !== 'undefined' &&
-      typeof performance.now === 'function') {
-    now = () => performance.now();
-  } else {
-    now = () => Date.now();
-  }
-  downloadTest(sock, postMessage, now);
+    console.log("Connecting to " + url);
+    const sock = new WebSocket(url, 'net.measurementlab.throughput.v1');
+    console.log("Connection established");
+
+    // Define now() as either performance.now() or Date.now(). This allows to
+    // support browsers that do not support performance.now() (e.g. IE11).
+    let now;
+    if (typeof performance !== 'undefined' &&
+        typeof performance.now === 'function') {
+        now = () => performance.now();
+    } else {
+        now = () => Date.now();
+    }
+    downloadTest(sock, now);
 };
 
-const downloadTest = function(sock, postMessage, now) {
+const downloadTest = function(sock, now) {
+
+    console.log("start downloadTest");
+    let start;
+    let previous;
+    let bytesReceived;
+    let bytesSent;
+
     sock.onclose = function() {
+        console.log("onclose");
         postMessage({
             MsgType: 'close',
         });
@@ -30,14 +41,11 @@ const downloadTest = function(sock, postMessage, now) {
         });
     };
 
-    let start;
-    let previous;
-    let bytesReceived;
-
     sock.onopen = function() {
         start = now();
         previous = start;
         bytesReceived = 0;
+        bytesSent = 0;
 
         postMessage({
             MsgType: 'start',
@@ -58,12 +66,14 @@ const downloadTest = function(sock, postMessage, now) {
             const measurement = {
                 Application: {
                     BytesReceived: bytesReceived,
-                    BytesSent: 0, // TODO
+                    BytesSent: bytesSent, // TODO
                 },
                 ElapsedTime: (t - start) * 1000,
             };
 
-            sock.send(JSON.stringify(measurement));
+            const measurementStr = JSON.stringify(measurement);
+            sock.send(measurementStr);
+            bytesSent += measurementStr.length;
 
             postMessage({
                 MsgType: 'measurement',
