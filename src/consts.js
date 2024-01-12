@@ -1,5 +1,5 @@
 export const LIBRARY_NAME = 'msak-js', LIBRARY_VERSION = '0.1.0';
-export const DEFAULT_SCHEME = 'wss';
+export const DEFAULT_PROTOCOL = 'wss';
 export const DEFAULT_STREAMS = 2;
 export const DEFAULT_CC = 'bbr';
 export const DEFAULT_DURATION = 5000;

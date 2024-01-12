@@ -6,10 +6,10 @@ import * as consts from "./consts";
  */
 export class Client {
     /**
-     * 
+     *
      * Client is a client for the MSAK test protocol. Client name and version
      * are mandatory and passed to the server as metadata.
-     * 
+     *
      * @param {string} clientName - A unique name for this client.
      * @param {string} clientVersion - The client's version.
      */
@@ -21,7 +21,7 @@ export class Client {
         this.clientVersion = clientVersion;
         this.metadata = {};
         this._cc = consts.DEFAULT_CC;
-        this._protocol = consts.DEFAULT_SCHEME;
+        this._protocol = consts.DEFAULT_PROTOCOL;
         this._streams = consts.DEFAULT_STREAMS;
         this._duration = consts.DEFAULT_DURATION;
         this._server = "";
@@ -94,7 +94,7 @@ export class Client {
     //
 
     /**
-     * 
+     *
      * @param {Object} obj - The object to print to the console.
      */
     #debug(obj) {
@@ -105,7 +105,7 @@ export class Client {
      * Sets standard client metadata, protocol options and custom metadata on
      * the provided URLSearchParams. If a URLSearchParams is not provided, a new
      * one is created.
-     * 
+     *
      * @param {URLSearchParams} sp - Starting URLSearchParams to modify (optional)
      * @returns {URLSearchParams} The complete URLSearchParams
      */
@@ -118,7 +118,7 @@ export class Client {
         sp.set("client_version", this.clientVersion);
         sp.set("client_library_name", consts.LIBRARY_NAME);
         sp.set("client_library_version", consts.LIBRARY_VERSION);
-        
+
         // Set protocol options.
         sp.set("streams", this._streams.toString());
         sp.set("cc", this._cc);
@@ -158,7 +158,7 @@ export class Client {
      * the first invocation, it requests new URLs for nearby servers from the
      * Locate service. On subsequent invocations, it returns the next cached
      * result.
-     * 
+     *
      * All the returned URLs include protocol options and metadata in the
      * querystring.
      * @returns A map of two URLs - one for download, one for upload.
@@ -195,7 +195,7 @@ export class Client {
     }
 
     /**
-     * 
+     *
      * @param {string} [server] - The server to connect to.  If not specified,
      * will query the Locate service to get a nearby server.
      */
@@ -214,7 +214,7 @@ export class Client {
      */
     download(serverURL) {
         let workerFile = this.downloadWorkerFile ||  new URL('download.js', import.meta.url);
-        this.#debug('Starting ' + this._streams + ' download streams with URL ' 
+        this.#debug('Starting ' + this._streams + ' download streams with URL '
             + serverURL.toString());
         for (let i = 0; i < this._streams; i++) {
             this.runWorker(workerFile, serverURL);
