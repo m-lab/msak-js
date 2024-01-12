@@ -22,7 +22,7 @@ export class Client {
         this.clientVersion = clientVersion;
         this.callbacks = userCallbacks;
         this.metadata = {};
-
+ 
         this._cc = consts.DEFAULT_CC;
         this._protocol = consts.DEFAULT_PROTOCOL;
         this._streams = consts.DEFAULT_STREAMS;
