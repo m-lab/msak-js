@@ -240,11 +240,10 @@ export class Client {
         if (message.type == 'measurement' && message.client) {
             this._bytesReceivedPerStream[id] = message.client.Application.BytesReceived;
 
-            let goodput = this._bytesReceivedPerStream[id] / (performance.now() - this._startTime) / 1000 * 8;
-            let aggregateGoodput = this._bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
-                (performance.now() - this._startTime) / 1000 * 8;
-
-            let elapsed = (performance.now() - this._startTime) / 1000;
+            const elapsed = (performance.now() - this._startTime) / 1000;
+            const goodput = this._bytesReceivedPerStream[id] / elapsed * 8;
+            const aggregateGoodput = this._bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
+                elapsed / 1000 * 8;
 
             this.#debug('stream #' + id + ' elapsed ' + elapsed.toFixed(2)  + 's' +
                 ' application r/w: ' +
@@ -257,6 +256,8 @@ export class Client {
                 elapsed: elapsed,
                 stream: id,
                 goodput: goodput,
+                measurement: message.client,
+                source: 'client',
             });
 
             this.callbacks.onResult({
