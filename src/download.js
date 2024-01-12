@@ -30,14 +30,14 @@ const downloadTest = function(sock, now) {
     sock.onclose = function() {
         console.log("onclose");
         postMessage({
-            MsgType: 'close',
+            type: 'close',
         });
     };
 
     sock.onerror = function(ev) {
         postMessage({
-            MsgType: 'error',
-            Error: ev.type,
+            type: 'error',
+            error: ev.type,
         });
     };
 
@@ -48,10 +48,8 @@ const downloadTest = function(sock, now) {
         bytesSent = 0;
 
         postMessage({
-            MsgType: 'start',
-            Data: {
-                StartTime: start,
-            },
+            type: 'connect',
+            startTime: start,
         });
     };
 
@@ -59,7 +57,7 @@ const downloadTest = function(sock, now) {
         bytesReceived +=
             (typeof ev.data.size !== 'undefined') ? ev.data.size : ev.data.length;
         const t = now();
-        const every = 250; // ms
+        const every = 200; // ms
 
         if (t - previous > every) {
             // Create a Measurement object.
@@ -76,9 +74,8 @@ const downloadTest = function(sock, now) {
             bytesSent += measurementStr.length;
 
             postMessage({
-                MsgType: 'measurement',
-                ClientMeasurement: measurement,
-                Source: 'client',
+                type: 'measurement',
+                client: measurement,
             })
             previous = t;
         }
@@ -86,9 +83,8 @@ const downloadTest = function(sock, now) {
         // Pass along every server-side measurement.
         if (typeof ev.data === 'string') {
             postMessage({
-                MsgType: 'measurement',
-                ServerMeasurement: ev.data,
-                Source: 'server',
+                type: 'measurement',
+                server: ev.data,
             });
         }
     };

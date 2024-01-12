@@ -12,37 +12,41 @@ export class Client {
      *
      * @param {string} clientName - A unique name for this client.
      * @param {string} clientVersion - The client's version.
+     * @param {Object} [userCallbacks] - An object containing user-defined callbacks.
      */
-    constructor(clientName, clientVersion) {
+    constructor(clientName, clientVersion, userCallbacks) {
         if (!clientName || !clientVersion)
             throw new Error("client name and version are required");
 
         this.clientName = clientName;
         this.clientVersion = clientVersion;
+        this.callbacks = userCallbacks;
         this.metadata = {};
+ 
         this._cc = consts.DEFAULT_CC;
         this._protocol = consts.DEFAULT_PROTOCOL;
         this._streams = consts.DEFAULT_STREAMS;
         this._duration = consts.DEFAULT_DURATION;
         this._server = "";
 
+        this._startTime = undefined;
         this._locateCache = [];
 
         /**
-         * Bytes received across all streams.
-         * @type {number}
+         * Bytes received for each stream.
+         * Streams are identifed by the array index.
+         * @type {Array}
          * @public
          */
-        this.bytesReceived = 0;
+        this._bytesReceivedPerStream = [];
 
         /**
-         * Bytes sent across all streams.
-         * @type {number}
+         * Bytes sent for each stream.
+         * Streams are identifed by the array index.
+         * @type {Array}
          * @public
          */
-        this.bytesSent = 0;
-
-        this.callbacks = {};
+        this._bytesSentPerStream = [];
     }
 
     //
@@ -170,10 +174,10 @@ export class Client {
          * @returns {Object}  A map of URLs for the download and upload.
          */
         let makeURLs = () => {
-            let res = this._locateCache.shift()
+            const res = this._locateCache.shift()
 
-            let downloadURL = new URL(res.urls[this._protocol + '://' + consts.DOWNLOAD_PATH]);
-            let uploadURL = new URL(res.urls[this._protocol + '://' + consts.UPLOAD_PATH]);
+            const downloadURL = new URL(res.urls[this._protocol + '://' + consts.DOWNLOAD_PATH]);
+            const uploadURL = new URL(res.urls[this._protocol + '://' + consts.UPLOAD_PATH]);
 
             downloadURL.search = this.#setSearchParams(downloadURL.searchParams)
             uploadURL.search = this.#setSearchParams(uploadURL.searchParams)
@@ -186,7 +190,7 @@ export class Client {
 
         // If this is the first call or the cache is empty, query the Locate service.
         if (this._locateCache.length == 0) {
-            let results = await discoverServerURLs(this.clientName, this.clientVersion)
+            const results = await discoverServerURLs(this.clientName, this.clientVersion)
             this._locateCache = results;
             return makeURLs();
         } else {
@@ -212,25 +216,62 @@ export class Client {
     /**
      * @param {string} serverURL
      */
-    download(serverURL) {
-        let workerFile = this.downloadWorkerFile ||  new URL('download.js', import.meta.url);
+    async download(serverURL) {
+        let workerFile = this.downloadWorkerFile || new URL('download.js', import.meta.url);
         this.#debug('Starting ' + this._streams + ' download streams with URL '
             + serverURL.toString());
+
+        let workerPromises = [];
         for (let i = 0; i < this._streams; i++) {
-            this.runWorker(workerFile, serverURL);
+            workerPromises.push(this.runWorker(workerFile, serverURL, i));
+        }
+        await Promise.all(workerPromises)
+    }
+
+    #handleWorkerEvent(ev, id) {
+        let message = ev.data
+        if (message.type == 'connect') {
+            if (!this._startTime) {
+                this.#debug('setting global start time to ' + message.startTime);
+                this._startTime = message.startTime;
+            }
+        }
+
+        if (message.type == 'measurement' && message.client) {
+            this._bytesReceivedPerStream[id] = message.client.Application.BytesReceived;
+
+            const elapsed = (performance.now() - this._startTime) / 1000;
+            const goodput = this._bytesReceivedPerStream[id] / elapsed * 8;
+            const aggregateGoodput = this._bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
+                elapsed / 1000 * 8;
+
+            this.#debug('stream #' + id + ' elapsed ' + elapsed.toFixed(2)  + 's' +
+                ' application r/w: ' +
+                    message.client.Application.BytesReceived + '/' +
+                    message.client.Application.BytesSent +
+                ' stream goodput: ' + goodput.toFixed(2) + ' Mb/s' +
+                ' aggr goodput: ' + aggregateGoodput.toFixed(2)  + ' Mb/s');
+
+            this.callbacks.onMeasurement({
+                elapsed: elapsed,
+                stream: id,
+                goodput: goodput,
+                measurement: message.client,
+                source: 'client',
+            });
+
+            this.callbacks.onResult({
+                elapsed: elapsed,
+                goodput: aggregateGoodput
+            });
         }
     }
 
-    #handleWorkerEvent(ev) {
-        this.#debug(ev);
-    }
-
-    async runWorker(workerfile, serverURL) {
+    async runWorker(workerfile, serverURL, streamID) {
         const worker = new Worker(workerfile);
 
         setTimeout(() => worker.terminate(), this._duration);
-        worker.onmessage = (ev) => this.#handleWorkerEvent(ev);
+        worker.onmessage = (ev) => this.#handleWorkerEvent(ev, streamID);
         worker.postMessage(serverURL.toString());
-
     }
 }

@@ -8,9 +8,20 @@
 <body>
     <script src="dist/msak.js" type="text/javascript"></script>
     <script>
-        m = new msak.Client("msakjs-example", "0.1.0");
+        m = new msak.Client("msakjs-example", "0.1.0", {
+            onResult: (result) => {
+                document.getElementById("goodput-dl").innerHTML = "Download: " +
+                    result.goodput.toFixed(2) + " Mb/s";
+            },
+            onMeasurement: (measurement) => {
+                console.log(measurement);
+            }
+        });
         m.debug = true;
+        m.cc = 'bbr';
+        m.streams = 2;
         m.start();
     </script>
+    <div id="goodput-dl"></div>
 </body>
 </html>
