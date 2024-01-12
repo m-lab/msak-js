@@ -6,20 +6,23 @@ import * as consts from "./consts";
  */
 export class Client {
     /**
-     * 
+     *
      * Client is a client for the MSAK test protocol. Client name and version
      * are mandatory and passed to the server as metadata.
-     * 
+     *
      * @param {string} clientName - A unique name for this client.
      * @param {string} clientVersion - The client's version.
+     * @param {Object} [userCallbacks] - An object containing user-defined callbacks.
      */
-    constructor(clientName, clientVersion) {
+    constructor(clientName, clientVersion, userCallbacks) {
         if (!clientName || !clientVersion)
             throw new Error("client name and version are required");
 
         this.clientName = clientName;
         this.clientVersion = clientVersion;
+        this.callbacks = userCallbacks;
         this.metadata = {};
+
         this._cc = consts.DEFAULT_CC;
         this._protocol = consts.DEFAULT_SCHEME;
         this._streams = consts.DEFAULT_STREAMS;
@@ -44,8 +47,6 @@ export class Client {
          * @public
          */
         this._bytesSentPerStream = [];
-
-        this.callbacks = {};
     }
 
     //
@@ -97,7 +98,7 @@ export class Client {
     //
 
     /**
-     * 
+     *
      * @param {Object} obj - The object to print to the console.
      */
     #debug(obj) {
@@ -108,7 +109,7 @@ export class Client {
      * Sets standard client metadata, protocol options and custom metadata on
      * the provided URLSearchParams. If a URLSearchParams is not provided, a new
      * one is created.
-     * 
+     *
      * @param {URLSearchParams} sp - Starting URLSearchParams to modify (optional)
      * @returns {URLSearchParams} The complete URLSearchParams
      */
@@ -161,7 +162,7 @@ export class Client {
      * the first invocation, it requests new URLs for nearby servers from the
      * Locate service. On subsequent invocations, it returns the next cached
      * result.
-     * 
+     *
      * All the returned URLs include protocol options and metadata in the
      * querystring.
      * @returns A map of two URLs - one for download, one for upload.
@@ -173,10 +174,10 @@ export class Client {
          * @returns {Object}  A map of URLs for the download and upload.
          */
         let makeURLs = () => {
-            let res = this._locateCache.shift()
+            const res = this._locateCache.shift()
 
-            let downloadURL = new URL(res.urls[this._protocol + '://' + consts.DOWNLOAD_PATH]);
-            let uploadURL = new URL(res.urls[this._protocol + '://' + consts.UPLOAD_PATH]);
+            const downloadURL = new URL(res.urls[this._protocol + '://' + consts.DOWNLOAD_PATH]);
+            const uploadURL = new URL(res.urls[this._protocol + '://' + consts.UPLOAD_PATH]);
 
             downloadURL.search = this.#setSearchParams(downloadURL.searchParams)
             uploadURL.search = this.#setSearchParams(uploadURL.searchParams)
@@ -189,7 +190,7 @@ export class Client {
 
         // If this is the first call or the cache is empty, query the Locate service.
         if (this._locateCache.length == 0) {
-            let results = await discoverServerURLs(this.clientName, this.clientVersion)
+            const results = await discoverServerURLs(this.clientName, this.clientVersion)
             this._locateCache = results;
             return makeURLs();
         } else {
@@ -198,7 +199,7 @@ export class Client {
     }
 
     /**
-     * 
+     *
      * @param {string} [server] - The server to connect to.  If not specified,
      * will query the Locate service to get a nearby server.
      */
@@ -215,13 +216,16 @@ export class Client {
     /**
      * @param {string} serverURL
      */
-    download(serverURL) {
+    async download(serverURL) {
         let workerFile = this.downloadWorkerFile || new URL('download.js', import.meta.url);
         this.#debug('Starting ' + this._streams + ' download streams with URL '
             + serverURL.toString());
+
+        let workerPromises = [];
         for (let i = 0; i < this._streams; i++) {
-            this.runWorker(workerFile, serverURL, i);
+            workerPromises.push(this.runWorker(workerFile, serverURL, i));
         }
+        await Promise.all(workerPromises)
     }
 
     #handleWorkerEvent(ev, id) {
