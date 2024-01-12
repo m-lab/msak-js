@@ -1,4 +1,4 @@
-import { LB_BASE_URL, LB_RESOURCE_PATH, LIBRARY_NAME, LIBRARY_VERSION } from "./consts";
+import { LOCATE_BASE_URL, LOCATE_RESOURCE_PATH, LIBRARY_NAME, LIBRARY_VERSION } from "./consts";
 
 /**
  * discoverServerURLs contacts a web service (likely the Measurement Lab
@@ -17,9 +17,9 @@ import { LB_BASE_URL, LB_RESOURCE_PATH, LIBRARY_NAME, LIBRARY_VERSION } from "./
  */
 export async function discoverServerURLs(clientName, clientVersion, lbBaseURL) {
     if (!lbBaseURL) {
-        lbBaseURL = LB_BASE_URL
+        lbBaseURL = LOCATE_BASE_URL
     }
-    const lbURL = new URL(lbBaseURL + LB_RESOURCE_PATH);
+    const lbURL = new URL(lbBaseURL + LOCATE_RESOURCE_PATH);
 
     // Pass client/library name and versions to the load balancer in the
     // querystring.
