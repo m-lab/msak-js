@@ -24,7 +24,7 @@ export class Client {
         this.metadata = {};
 
         this._cc = consts.DEFAULT_CC;
-        this._protocol = consts.DEFAULT_SCHEME;
+        this._protocol = consts.DEFAULT_PROTOCOL;
         this._streams = consts.DEFAULT_STREAMS;
         this._duration = consts.DEFAULT_DURATION;
         this._server = "";
