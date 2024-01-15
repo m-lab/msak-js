@@ -10,8 +10,8 @@ cd msak-js
 # Install dependencies
 $ npm install
 
-# Run webpack
-$ npx webpack
+# Build the project
+$ npm run build-prod
 ```
 
 This will build the library and write the resulting UMD module in `dist/msak.js`
