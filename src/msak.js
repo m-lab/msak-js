@@ -79,7 +79,6 @@ export class Client {
      * Must be one of the supported CC algorithms.
      */
     set cc(value) {
-        console.log(value);
         if (!consts.SUPPORTED_CC_ALGORITHMS.includes(value)) {
             throw new Error("supported algorithm are " + consts.SUPPORTED_CC_ALGORITHMS);
         }
@@ -213,8 +212,6 @@ export class Client {
                 const aggregateGoodput = this._bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
                     elapsed / 1e6 * 8;
 
-                console.log(this._bytesReceivedPerStream.reduce((a, b) => a+b, 0));
-                console.log(elapsed);
                 this.#debug('stream #' + id + ' elapsed ' + (measurement.ElapsedTime / 1e6).toFixed(2) + 's' +
                     ' application r/w: ' +
                     measurement.Application.BytesReceived + '/' +
@@ -371,7 +368,9 @@ export class Client {
         setTimeout(() => worker.resolve(0), this._duration + 1000);
 
 
-        worker.onmessage = (ev) => this.#handleWorkerEvent(ev, testType, streamID, worker);
+        worker.onmessage = (ev) => {
+            this.#handleWorkerEvent(ev, testType, streamID, worker);
+        };
         worker.postMessage(serverURL.toString());
 
         return workerPromise;
