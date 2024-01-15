@@ -27,6 +27,9 @@
             },
             onUploadMeasurement: (measurement) => {
                 console.log(measurement);
+            },
+            onError: (err) => {
+                console.log("Error: " + err);
             }
         });
         m.debug = true;

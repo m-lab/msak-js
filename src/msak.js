@@ -1,6 +1,6 @@
 import { discoverServerURLs } from "./locate";
 import * as consts from "./consts";
-import { cb } from "./callbacks.js";
+import { cb, defaultErrCallback } from "./callbacks.js";
 
 /**
  * Client is a client for the MSAK test protocol.
@@ -169,6 +169,7 @@ export class Client {
 
         if (message.type == 'error') {
             this.#debug('error: ' + message.error);
+            this.callbacks.onError(message.error);
             worker.reject(message.error);
         }
 
@@ -297,6 +298,7 @@ export class Client {
             ...this.callbacks,
             onResult: cb('onDownloadResult', this.callbacks),
             onMeasurement: cb('onDownloadMeasurement', this.callbacks),
+            onError: cb('onError', this.callbacks, defaultErrCallback),
         }
         this.#debug("Setting callbacks");
         this.#debug(this.callbacks);
@@ -320,6 +322,7 @@ export class Client {
             ...this.callbacks,
             onResult: cb('onUploadResult', this.callbacks),
             onMeasurement: cb('onUploadMeasurement', this.callbacks),
+            onError: cb('onError', this.callbacks, defaultErrCallback),
         }
         this.#debug("Setting callbacks");
         this.#debug(this.callbacks);
