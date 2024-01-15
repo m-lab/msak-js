@@ -158,6 +158,73 @@ export class Client {
         };
     }
 
+    #handleWorkerEvent(ev, testType, id, worker) {
+        let message = ev.data
+        if (message.type == 'connect') {
+            if (!this._startTime) {
+                this.#debug('setting global start time to ' + message.startTime);
+                this._startTime = message.startTime;
+            }
+        }
+
+        if (message.type == 'error') {
+            this.#debug('error: ' + message.error);
+            worker.reject(message.error);
+        }
+
+        if (message.type == 'close') {
+            this.#debug('stream #' + id + ' closed');
+            worker.resolve();
+        }
+
+        if (message.type == 'measurement') {
+            let measurement;
+            switch (testType) {
+                case 'download':
+                    if (message.client) {
+                        measurement = message.client;
+                    }
+                    break;
+                case 'upload':
+                    if (message.server) {
+                        measurement = JSON.parse(message.server);
+                    }
+                    break;
+                default:
+                    throw new Error('unknown test type: ' + testType);
+            }
+
+            if (measurement) {
+                this._bytesReceivedPerStream[id] = measurement.Application.BytesReceived;
+
+                const elapsed = (performance.now() - this._startTime) / 1000;
+                const goodput = this._bytesReceivedPerStream[id] / measurement.ElapsedTime * 8;
+                const aggregateGoodput = this._bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
+                    elapsed / 1e6 * 8;
+
+                this.#debug('stream #' + id + ' elapsed ' + (measurement.ElapsedTime / 1e6).toFixed(2) + 's' +
+                    ' application r/w: ' +
+                    measurement.Application.BytesReceived + '/' +
+                    measurement.Application.BytesSent +
+                    ' stream goodput: ' + goodput.toFixed(2) + ' Mb/s' +
+                    ' aggr goodput: ' + aggregateGoodput.toFixed(2) + ' Mb/s');
+
+                this.callbacks.onMeasurement({
+                    elapsed: elapsed,
+                    stream: id,
+                    goodput: goodput,
+                    measurement: measurement,
+                    source: 'client',
+                });
+
+                this.callbacks.onResult({
+                    elapsed: elapsed,
+                    goodput: aggregateGoodput
+                });
+            }
+        }
+    }
+
     // Public methods
 
     /**
@@ -262,73 +329,6 @@ export class Client {
             workerPromises.push(this.runWorker('upload', workerFile, serverURL, i));
         }
         await Promise.all(workerPromises);
-    }
-
-    #handleWorkerEvent(ev, testType, id, worker) {
-        let message = ev.data
-        if (message.type == 'connect') {
-            if (!this._startTime) {
-                this.#debug('setting global start time to ' + message.startTime);
-                this._startTime = message.startTime;
-            }
-        }
-
-        if (message.type == 'error') {
-            this.#debug('error: ' + message.error);
-            worker.reject(message.error);
-        }
-
-        if (message.type == 'close') {
-            this.#debug('stream #' + id + ' closed');
-            worker.resolve();
-        }
-
-        if (message.type == 'measurement') {
-            let measurement;
-            switch (testType) {
-                case 'download':
-                    if (message.client) {
-                        measurement = message.client;
-                    }
-                    break;
-                case 'upload':
-                    if (message.server) {
-                        measurement = JSON.parse(message.server);
-                    }
-                    break;
-                default:
-                    throw new Error('unknown test type: ' + testType);
-            }
-
-            if (measurement) {
-                this._bytesReceivedPerStream[id] = measurement.Application.BytesReceived;
-
-                const elapsed = (performance.now() - this._startTime) / 1000;
-                const goodput = this._bytesReceivedPerStream[id] / measurement.ElapsedTime * 8;
-                const aggregateGoodput = this._bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
-                    elapsed / 1e6 * 8;
-
-                this.#debug('stream #' + id + ' elapsed ' + (measurement.ElapsedTime / 1e6).toFixed(2) + 's' +
-                    ' application r/w: ' +
-                    measurement.Application.BytesReceived + '/' +
-                    measurement.Application.BytesSent +
-                    ' stream goodput: ' + goodput.toFixed(2) + ' Mb/s' +
-                    ' aggr goodput: ' + aggregateGoodput.toFixed(2) + ' Mb/s');
-
-                this.callbacks.onMeasurement({
-                    elapsed: elapsed,
-                    stream: id,
-                    goodput: goodput,
-                    measurement: measurement,
-                    source: 'client',
-                });
-
-                this.callbacks.onResult({
-                    elapsed: elapsed,
-                    goodput: aggregateGoodput
-                });
-            }
-        }
     }
 
     runWorker(testType, workerfile, serverURL, streamID) {
