@@ -11,7 +11,8 @@ const workerMain = function (ev) {
     let now;
     if (typeof performance !== 'undefined' &&
         typeof performance.now === 'function') {
-        now = () => performance.now();
+        // The ~~ operator is a faster way of doing Math.floor().
+        now = () => ~~performance.now();
     } else {
         now = () => Date.now();
     }
@@ -132,8 +133,8 @@ const uploadTest = function (sock, now) {
         }
 
         if (t >= previous + clientMeasurementInterval) {
-             // Create a Measurement object.
-             const measurement = {
+            // Create a Measurement object.
+            const measurement = {
                 Application: {
                     BytesReceived: bytesReceived,
                     BytesSent: bytesSent,
