@@ -20,7 +20,13 @@ const config = {
         test: /\.js$/,
         use: 'babel-loader',
         exclude: /node_modules/
-      }
+      },
+      {
+        test: /(download|upload)\.js$/,
+        use: 'babel-loader',
+        exclude: /(node_modules)/,
+        type: "asset/inline",
+      },
     ]
   },
   plugins: [
