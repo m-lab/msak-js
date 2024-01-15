@@ -96,6 +96,16 @@ export class Client {
         this._protocol = value;
     }
 
+     /**
+     * @param {string} value - The duration of the test in milliseconds.
+     */
+     set duration(value) {
+        if (value <= 0 || value > 20000) {
+            throw new Error("duration must be between 1 and 20000");
+        }
+        this._duration = value;
+    }
+
     //
     // Private methods
     //
@@ -228,8 +238,6 @@ export class Client {
         }
     }
 
-    // Public methods
-
     /**
      * Retrieves the next download/upload URL pair from the Locate service. On
      * the first invocation, it requests new URLs for nearby servers from the
@@ -270,6 +278,8 @@ export class Client {
             return makeURLs();
         }
     }
+
+    // Public methods
 
     /**
      *
