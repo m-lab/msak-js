@@ -1,5 +1,6 @@
 import { discoverServerURLs } from "./locate";
 import * as consts from "./consts";
+import { cb } from "./callbacks.js";
 
 /**
  * Client is a client for the MSAK test protocol.
@@ -18,11 +19,13 @@ export class Client {
         if (!clientName || !clientVersion)
             throw new Error("client name and version are required");
 
+        this.downloadWorkerFile = undefined;
+        this.uploadWorkerFile = undefined;
         this.clientName = clientName;
         this.clientVersion = clientVersion;
         this.callbacks = userCallbacks;
         this.metadata = {};
- 
+
         this._cc = consts.DEFAULT_CC;
         this._protocol = consts.DEFAULT_PROTOCOL;
         this._streams = consts.DEFAULT_STREAMS;
@@ -210,7 +213,8 @@ export class Client {
         } else {
             serverURLs = await this.#nextURLsFromLocate();
         }
-        this.download(serverURLs['//' + consts.DOWNLOAD_PATH]);
+        await this.download(serverURLs['//' + consts.DOWNLOAD_PATH]);
+        await this.upload(serverURLs['//' + consts.UPLOAD_PATH]);
     }
 
     /**
@@ -221,14 +225,46 @@ export class Client {
         this.#debug('Starting ' + this._streams + ' download streams with URL '
             + serverURL.toString());
 
+        // Set callbacks.
+        this.callbacks = {
+            ...this.callbacks,
+            onResult: cb('onDownloadResult', this.callbacks),
+            onMeasurement: cb('onDownloadMeasurement', this.callbacks),
+        }
+        this.#debug("Setting callbacks");
+        this.#debug(this.callbacks);
+
         let workerPromises = [];
         for (let i = 0; i < this._streams; i++) {
-            workerPromises.push(this.runWorker(workerFile, serverURL, i));
+            workerPromises.push(this.runWorker('download', workerFile, serverURL, i));
         }
-        await Promise.all(workerPromises)
+        await Promise.all(workerPromises);
     }
 
-    #handleWorkerEvent(ev, id) {
+    async upload(serverURL) {
+        let workerFile = this.uploadWorkerFile || new URL('upload.js', import.meta.url);
+        this.#debug('Starting ' + this._streams + ' upload streams with URL '
+            + serverURL.toString());
+
+        // Set callbacks.
+        this.#debug(this.callbacks);
+
+        this.callbacks = {
+            ...this.callbacks,
+            onResult: cb('onUploadResult', this.callbacks),
+            onMeasurement: cb('onUploadMeasurement', this.callbacks),
+        }
+        this.#debug("Setting callbacks");
+        this.#debug(this.callbacks);
+
+        let workerPromises = [];
+        for (let i = 0; i < this._streams; i++) {
+            workerPromises.push(this.runWorker('upload', workerFile, serverURL, i));
+        }
+        await Promise.all(workerPromises);
+    }
+
+    #handleWorkerEvent(ev, testType, id, worker) {
         let message = ev.data
         if (message.type == 'connect') {
             if (!this._startTime) {
@@ -237,41 +273,80 @@ export class Client {
             }
         }
 
-        if (message.type == 'measurement' && message.client) {
-            this._bytesReceivedPerStream[id] = message.client.Application.BytesReceived;
+        if (message.type == 'error') {
+            this.#debug('error: ' + message.error);
+            worker.reject(message.error);
+        }
 
-            const elapsed = (performance.now() - this._startTime) / 1000;
-            const goodput = this._bytesReceivedPerStream[id] / elapsed * 8;
-            const aggregateGoodput = this._bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
-                elapsed / 1000 * 8;
+        if (message.type == 'close') {
+            this.#debug('stream #' + id + ' closed');
+            worker.resolve();
+        }
 
-            this.#debug('stream #' + id + ' elapsed ' + elapsed.toFixed(2)  + 's' +
-                ' application r/w: ' +
-                    message.client.Application.BytesReceived + '/' +
-                    message.client.Application.BytesSent +
-                ' stream goodput: ' + goodput.toFixed(2) + ' Mb/s' +
-                ' aggr goodput: ' + aggregateGoodput.toFixed(2)  + ' Mb/s');
+        if (message.type == 'measurement') {
+            let measurement;
+            switch (testType) {
+                case 'download':
+                    if (message.client) {
+                        measurement = message.client;
+                    }
+                    break;
+                case 'upload':
+                    if (message.server) {
+                        measurement = JSON.parse(message.server);
+                    }
+                    break;
+                default:
+                    throw new Error('unknown test type: ' + testType);
+            }
 
-            this.callbacks.onMeasurement({
-                elapsed: elapsed,
-                stream: id,
-                goodput: goodput,
-                measurement: message.client,
-                source: 'client',
-            });
+            if (measurement) {
+                this._bytesReceivedPerStream[id] = measurement.Application.BytesReceived;
 
-            this.callbacks.onResult({
-                elapsed: elapsed,
-                goodput: aggregateGoodput
-            });
+                const elapsed = (performance.now() - this._startTime) / 1000;
+                const goodput = this._bytesReceivedPerStream[id] / measurement.ElapsedTime * 8;
+                const aggregateGoodput = this._bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
+                    elapsed / 1e6 * 8;
+
+                this.#debug('stream #' + id + ' elapsed ' + (measurement.ElapsedTime / 1e6).toFixed(2) + 's' +
+                    ' application r/w: ' +
+                    measurement.Application.BytesReceived + '/' +
+                    measurement.Application.BytesSent +
+                    ' stream goodput: ' + goodput.toFixed(2) + ' Mb/s' +
+                    ' aggr goodput: ' + aggregateGoodput.toFixed(2) + ' Mb/s');
+
+                this.callbacks.onMeasurement({
+                    elapsed: elapsed,
+                    stream: id,
+                    goodput: goodput,
+                    measurement: measurement,
+                    source: 'client',
+                });
+
+                this.callbacks.onResult({
+                    elapsed: elapsed,
+                    goodput: aggregateGoodput
+                });
+            }
         }
     }
 
-    async runWorker(workerfile, serverURL, streamID) {
+    runWorker(testType, workerfile, serverURL, streamID) {
         const worker = new Worker(workerfile);
-
-        setTimeout(() => worker.terminate(), this._duration);
-        worker.onmessage = (ev) => this.#handleWorkerEvent(ev, streamID);
+        const workerPromise = new Promise((resolve, reject) => {
+            worker.resolve = (returnCode) => {
+                worker.terminate();
+                resolve(returnCode);
+            };
+            worker.reject = (error) => {
+                worker.terminate();
+                reject(error);
+            };
+        });
+        setTimeout(() => worker.resolve(0), this._duration);
+        worker.onmessage = (ev) => this.#handleWorkerEvent(ev, testType, streamID, worker);
         worker.postMessage(serverURL.toString());
+
+        return workerPromise;
     }
 }
