@@ -162,8 +162,8 @@ export class Client {
         let message = ev.data
         if (message.type == 'connect') {
             if (!this._startTime) {
-                this.#debug('setting global start time to ' + message.startTime);
-                this._startTime = message.startTime;
+                this._startTime = performance.now();
+                this.#debug('setting global start time to ' + performance.now());
             }
         }
 
@@ -203,6 +203,8 @@ export class Client {
                 const aggregateGoodput = this._bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
                     elapsed / 1e6 * 8;
 
+                console.log(this._bytesReceivedPerStream.reduce((a, b) => a+b, 0));
+                console.log(elapsed);
                 this.#debug('stream #' + id + ' elapsed ' + (measurement.ElapsedTime / 1e6).toFixed(2) + 's' +
                     ' application r/w: ' +
                     measurement.Application.BytesReceived + '/' +
@@ -300,8 +302,11 @@ export class Client {
             onMeasurement: cb('onDownloadMeasurement', this.callbacks),
             onError: cb('onError', this.callbacks, defaultErrCallback),
         }
-        this.#debug("Setting callbacks");
-        this.#debug(this.callbacks);
+
+        // Reset byte counters and start time.
+        this._bytesReceivedPerStream = [];
+        this._bytesSentPerStream = [];
+        this._startTime = undefined;
 
         let workerPromises = [];
         for (let i = 0; i < this._streams; i++) {
@@ -316,16 +321,17 @@ export class Client {
             + serverURL.toString());
 
         // Set callbacks.
-        this.#debug(this.callbacks);
-
         this.callbacks = {
             ...this.callbacks,
             onResult: cb('onUploadResult', this.callbacks),
             onMeasurement: cb('onUploadMeasurement', this.callbacks),
             onError: cb('onError', this.callbacks, defaultErrCallback),
         }
-        this.#debug("Setting callbacks");
-        this.#debug(this.callbacks);
+
+        // Reset byte counters and start time.
+        this._bytesReceivedPerStream = [];
+        this._bytesSentPerStream = [];
+        this._startTime = undefined;
 
         let workerPromises = [];
         for (let i = 0; i < this._streams; i++) {
