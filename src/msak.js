@@ -175,7 +175,7 @@ export class Client {
 
         if (message.type == 'close') {
             this.#debug('stream #' + id + ' closed');
-            worker.resolve();
+            worker.resolve(0);
         }
 
         if (message.type == 'measurement') {
@@ -336,6 +336,9 @@ export class Client {
 
     runWorker(testType, workerfile, serverURL, streamID) {
         const worker = new Worker(workerfile);
+
+        // Create a Promise that will be resolved when the worker terminates
+        // successfully and rejected when the worker terminates with an error.
         const workerPromise = new Promise((resolve, reject) => {
             worker.resolve = (returnCode) => {
                 worker.terminate();
@@ -346,7 +349,12 @@ export class Client {
                 reject(error);
             };
         });
-        setTimeout(() => worker.resolve(0), this._duration);
+
+        // If the server did not close the connection already by then, terminate
+        // the worker and resolve the promise after the expected duration + 1s.
+        setTimeout(() => worker.resolve(0), this._duration + 1000);
+
+
         worker.onmessage = (ev) => this.#handleWorkerEvent(ev, testType, streamID, worker);
         worker.postMessage(serverURL.toString());
 
