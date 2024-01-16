@@ -12,7 +12,8 @@ const workerMain = function (ev) {
     let now;
     if (typeof performance !== 'undefined' &&
         typeof performance.now === 'function') {
-        now = () => performance.now();
+        // The ~~ operator is a faster way of doing Math.floor().
+        now = () => ~~performance.now();
     } else {
         now = () => Date.now();
     }
@@ -21,14 +22,12 @@ const workerMain = function (ev) {
 
 const downloadTest = function(sock, now) {
 
-    console.log("start downloadTest");
     let start;
     let previous;
     let bytesReceived;
     let bytesSent;
 
     sock.onclose = function() {
-        console.log("onclose");
         postMessage({
             type: 'close',
         });
