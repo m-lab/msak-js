@@ -2,13 +2,15 @@
   "name": "@m-lab/msak",
   "version": "0.0.1",
   "description": "Client for the MSAK multi-stream throughput measurement protocol",
-  "main": "dist/msak.js",
+  "main": "src/msak.js",
   "browser": "dist/msak.js",
+  "exports": "./src/msak.js",
   "scripts": {
     "clean": "rm dist/*",
     "prepare": "webpack",
-    "build-dev": "webpack --mode development",
-    "build-prod": "webpack"
+    "babel": "babel src -d lib",
+    "build-dev": "npm run babel && webpack --mode development",
+    "build-prod": "npm run babel && webpack"
   },
   "keywords": [
     "network",
@@ -20,7 +22,8 @@
   "author": "M-Lab",
   "license": "Apache-2.0",
   "devDependencies": {
-    "@babel/core": "^7.22.15",
+    "@babel/cli": "^7.23.4",
+    "@babel/core": "^7.23.7",
     "@babel/eslint-parser": "^7.22.15",
     "@babel/preset-env": "^7.22.15",
     "babel-loader": "^9.1.3",
@@ -28,5 +31,8 @@
     "eslint": "^8.48.0",
     "webpack": "^5.88.2",
     "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "test-msakjs": "file:../test-msakjs"
   }
 }
