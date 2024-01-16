@@ -1,8 +1,12 @@
 # msak-js
 
-JavaScript client library for the [MSAK](https://github.com/m-lab/msak) multi-stream throughput measurement protocol.
+JavaScript client library for the [MSAK](https://github.com/m-lab/msak)
+multi-stream throughput measurement protocol.
 
 ## How to build
+
+A [Node.js](https://nodejs.org/) environment (preferably the latest LTS, 20.x)
+is required.
 
 ```bash
 # Clone the repository
