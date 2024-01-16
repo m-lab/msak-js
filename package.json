@@ -7,7 +7,7 @@
   "exports": "./src/msak.js",
   "scripts": {
     "clean": "rm dist/*",
-    "prepare": "webpack",
+    "prepare": "npm run build-prod",
     "babel": "babel src -d lib",
     "build-dev": "npm run babel && webpack --mode development",
     "build-prod": "npm run babel && webpack"
@@ -31,8 +31,5 @@
     "eslint": "^8.48.0",
     "webpack": "^5.88.2",
     "webpack-cli": "^5.1.4"
-  },
-  "dependencies": {
-    "test-msakjs": "file:../test-msakjs"
   }
 }
