@@ -1,7 +1,9 @@
 # msak-js
+
 JavaScript client library for the [MSAK](https://github.com/m-lab/msak) multi-stream throughput measurement protocol.
 
 ## How to build
+
 ```bash
 # Clone the repository
 git clone https://github.com/m-lab/msak-js
@@ -17,7 +19,9 @@ $ npm run build-prod
 This will build the library and write the resulting UMD module in `dist/msak.js`
 
 ## How to use
+
 Include `msak.js` in your HTML page:
+
 ```html
  <script src="msak.js" type="text/javascript"></script>
 ```
