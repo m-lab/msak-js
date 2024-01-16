@@ -6,8 +6,9 @@
   "browser": "dist/msak.js",
   "scripts": {
     "clean": "rm dist/*",
+    "prepare": "webpack",
     "build-dev": "webpack --mode development",
-    "build-prod": "webpack --mode production"
+    "build-prod": "webpack"
   },
   "keywords": [
     "network",
