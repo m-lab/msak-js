@@ -1,5 +1,6 @@
 import { discoverServerURLs } from "./locate";
 import * as consts from "./consts";
+import { cb, defaultErrCallback } from "./callbacks.js";
 
 /**
  * Client is a client for the MSAK test protocol.
@@ -18,11 +19,13 @@ export class Client {
         if (!clientName || !clientVersion)
             throw new Error("client name and version are required");
 
+        this.downloadWorkerFile = undefined;
+        this.uploadWorkerFile = undefined;
         this.clientName = clientName;
         this.clientVersion = clientVersion;
         this.callbacks = userCallbacks;
         this.metadata = {};
- 
+
         this._cc = consts.DEFAULT_CC;
         this._protocol = consts.DEFAULT_PROTOCOL;
         this._streams = consts.DEFAULT_STREAMS;
@@ -76,7 +79,6 @@ export class Client {
      * Must be one of the supported CC algorithms.
      */
     set cc(value) {
-        console.log(value);
         if (!consts.SUPPORTED_CC_ALGORITHMS.includes(value)) {
             throw new Error("supported algorithm are " + consts.SUPPORTED_CC_ALGORITHMS);
         }
@@ -91,6 +93,16 @@ export class Client {
             throw new Error("protocol must be 'ws' or 'wss'");
         }
         this._protocol = value;
+    }
+
+     /**
+     * @param {string} value - The duration of the test in milliseconds.
+     */
+     set duration(value) {
+        if (value <= 0 || value > 20000) {
+            throw new Error("duration must be between 1 and 20000");
+        }
+        this._duration = value;
     }
 
     //
@@ -155,7 +167,73 @@ export class Client {
         };
     }
 
-    // Public methods
+    #handleWorkerEvent(ev, testType, id, worker) {
+        let message = ev.data
+        if (message.type == 'connect') {
+            if (!this._startTime) {
+                this._startTime = performance.now();
+                this.#debug('setting global start time to ' + performance.now());
+            }
+        }
+
+        if (message.type == 'error') {
+            this.#debug('error: ' + message.error);
+            this.callbacks.onError(message.error);
+            worker.reject(message.error);
+        }
+
+        if (message.type == 'close') {
+            this.#debug('stream #' + id + ' closed');
+            worker.resolve(0);
+        }
+
+        if (message.type == 'measurement') {
+            let measurement;
+            switch (testType) {
+                case 'download':
+                    if (message.client) {
+                        measurement = message.client;
+                    }
+                    break;
+                case 'upload':
+                    if (message.server) {
+                        measurement = JSON.parse(message.server);
+                    }
+                    break;
+                default:
+                    throw new Error('unknown test type: ' + testType);
+            }
+
+            if (measurement) {
+                this._bytesReceivedPerStream[id] = measurement.Application.BytesReceived;
+
+                const elapsed = (performance.now() - this._startTime) / 1000;
+                const goodput = this._bytesReceivedPerStream[id] / measurement.ElapsedTime * 8;
+                const aggregateGoodput = this._bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
+                    elapsed / 1e6 * 8;
+
+                this.#debug('stream #' + id + ' elapsed ' + (measurement.ElapsedTime / 1e6).toFixed(2) + 's' +
+                    ' application r/w: ' +
+                    measurement.Application.BytesReceived + '/' +
+                    measurement.Application.BytesSent +
+                    ' stream goodput: ' + goodput.toFixed(2) + ' Mb/s' +
+                    ' aggr goodput: ' + aggregateGoodput.toFixed(2) + ' Mb/s');
+
+                this.callbacks.onMeasurement({
+                    elapsed: elapsed,
+                    stream: id,
+                    goodput: goodput,
+                    measurement: measurement,
+                    source: 'client',
+                });
+
+                this.callbacks.onResult({
+                    elapsed: elapsed,
+                    goodput: aggregateGoodput
+                });
+            }
+        }
+    }
 
     /**
      * Retrieves the next download/upload URL pair from the Locate service. On
@@ -198,6 +276,8 @@ export class Client {
         }
     }
 
+    // Public methods
+
     /**
      *
      * @param {string} [server] - The server to connect to.  If not specified,
@@ -210,7 +290,8 @@ export class Client {
         } else {
             serverURLs = await this.#nextURLsFromLocate();
         }
-        this.download(serverURLs['//' + consts.DOWNLOAD_PATH]);
+        await this.download(serverURLs['//' + consts.DOWNLOAD_PATH]);
+        await this.upload(serverURLs['//' + consts.UPLOAD_PATH]);
     }
 
     /**
@@ -221,57 +302,77 @@ export class Client {
         this.#debug('Starting ' + this._streams + ' download streams with URL '
             + serverURL.toString());
 
+        // Set callbacks.
+        this.callbacks = {
+            ...this.callbacks,
+            onResult: cb('onDownloadResult', this.callbacks),
+            onMeasurement: cb('onDownloadMeasurement', this.callbacks),
+            onError: cb('onError', this.callbacks, defaultErrCallback),
+        }
+
+        // Reset byte counters and start time.
+        this._bytesReceivedPerStream = [];
+        this._bytesSentPerStream = [];
+        this._startTime = undefined;
+
         let workerPromises = [];
         for (let i = 0; i < this._streams; i++) {
-            workerPromises.push(this.runWorker(workerFile, serverURL, i));
+            workerPromises.push(this.runWorker('download', workerFile, serverURL, i));
         }
-        await Promise.all(workerPromises)
+        await Promise.all(workerPromises);
     }
 
-    #handleWorkerEvent(ev, id) {
-        let message = ev.data
-        if (message.type == 'connect') {
-            if (!this._startTime) {
-                this.#debug('setting global start time to ' + message.startTime);
-                this._startTime = message.startTime;
-            }
+    async upload(serverURL) {
+        let workerFile = this.uploadWorkerFile || new URL('upload.js', import.meta.url);
+        this.#debug('Starting ' + this._streams + ' upload streams with URL '
+            + serverURL.toString());
+
+        // Set callbacks.
+        this.callbacks = {
+            ...this.callbacks,
+            onResult: cb('onUploadResult', this.callbacks),
+            onMeasurement: cb('onUploadMeasurement', this.callbacks),
+            onError: cb('onError', this.callbacks, defaultErrCallback),
         }
 
-        if (message.type == 'measurement' && message.client) {
-            this._bytesReceivedPerStream[id] = message.client.Application.BytesReceived;
+        // Reset byte counters and start time.
+        this._bytesReceivedPerStream = [];
+        this._bytesSentPerStream = [];
+        this._startTime = undefined;
 
-            const elapsed = (performance.now() - this._startTime) / 1000;
-            const goodput = this._bytesReceivedPerStream[id] / elapsed * 8;
-            const aggregateGoodput = this._bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
-                elapsed / 1000 * 8;
-
-            this.#debug('stream #' + id + ' elapsed ' + elapsed.toFixed(2)  + 's' +
-                ' application r/w: ' +
-                    message.client.Application.BytesReceived + '/' +
-                    message.client.Application.BytesSent +
-                ' stream goodput: ' + goodput.toFixed(2) + ' Mb/s' +
-                ' aggr goodput: ' + aggregateGoodput.toFixed(2)  + ' Mb/s');
-
-            this.callbacks.onMeasurement({
-                elapsed: elapsed,
-                stream: id,
-                goodput: goodput,
-                measurement: message.client,
-                source: 'client',
-            });
-
-            this.callbacks.onResult({
-                elapsed: elapsed,
-                goodput: aggregateGoodput
-            });
+        let workerPromises = [];
+        for (let i = 0; i < this._streams; i++) {
+            workerPromises.push(this.runWorker('upload', workerFile, serverURL, i));
         }
+        await Promise.all(workerPromises);
     }
 
-    async runWorker(workerfile, serverURL, streamID) {
+    runWorker(testType, workerfile, serverURL, streamID) {
         const worker = new Worker(workerfile);
 
-        setTimeout(() => worker.terminate(), this._duration);
-        worker.onmessage = (ev) => this.#handleWorkerEvent(ev, streamID);
+        // Create a Promise that will be resolved when the worker terminates
+        // successfully and rejected when the worker terminates with an error.
+        const workerPromise = new Promise((resolve, reject) => {
+            worker.resolve = (returnCode) => {
+                worker.terminate();
+                resolve(returnCode);
+            };
+            worker.reject = (error) => {
+                worker.terminate();
+                reject(error);
+            };
+        });
+
+        // If the server did not close the connection already by then, terminate
+        // the worker and resolve the promise after the expected duration + 1s.
+        setTimeout(() => worker.resolve(0), this._duration + 1000);
+
+
+        worker.onmessage = (ev) => {
+            this.#handleWorkerEvent(ev, testType, streamID, worker);
+        };
         worker.postMessage(serverURL.toString());
+
+        return workerPromise;
     }
 }
