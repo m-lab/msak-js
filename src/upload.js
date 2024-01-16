@@ -1,3 +1,6 @@
+const MAX_MESSAGE_SIZE = 8388608; /* = (1<<23) = 8MB */
+const MEASUREMENT_INTERVAL = 250; // ms
+
 const workerMain = function (ev) {
 
     // Establish WebSocket connection to the URL passed by the caller.
@@ -85,7 +88,7 @@ const uploadTest = function (sock, now) {
      * Because of (3), we can't depend on the websocket buffer to "fill up" in a
      * reasonable amount of time.
      *
-     * So on fast connections we need a big message size (one the message has
+     * So on fast connections we need a big message size (once the message has
      * been handed off to the browser, it runs on the browser's fast compiled
      * internals) and on slow connections we need a small message. Because this
      * is used as a speed test, we don't know before the test which strategy we
@@ -113,13 +116,10 @@ const uploadTest = function (sock, now) {
             return;
         }
 
-        const maxMessageSize = 8388608; /* = (1<<23) = 8MB */
-        const clientMeasurementInterval = 250; // ms
-
         // Message size is doubled after the first 16 messages, and subsequently
         // every 8, up to maxMessageSize.
         const nextSizeIncrement =
-            (data.length >= maxMessageSize) ? Infinity : 16 * data.length;
+            (data.length >= MAX_MESSAGE_SIZE) ? Infinity : 16 * data.length;
         if ((bytesSent - sock.bufferedAmount) >= nextSizeIncrement) {
             data = new Uint8Array(data.length * 2);
         }
@@ -132,7 +132,7 @@ const uploadTest = function (sock, now) {
             bytesSent += data.length;
         }
 
-        if (t >= previous + clientMeasurementInterval) {
+        if (t >= previous + MEASUREMENT_INTERVAL) {
             // Create a Measurement object.
             const measurement = {
                 Application: {
