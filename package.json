@@ -1,24 +1,33 @@
 {
-  "name": "msak",
-  "version": "1.0.0",
-  "description": "JavaScript client for MSAK's multi-stream throughput measurement protocol",
-  "private": true,
-  "browser": "src/msak.js",
+  "name": "@m-lab/msak",
+  "version": "0.0.1",
+  "description": "Client for the MSAK multi-stream throughput measurement protocol",
+  "main": "src/msak.js",
+  "browser": "dist/msak.js",
+  "exports": "./src/msak.js",
   "scripts": {
-    "clean": "rm dist/bundle.js",
-    "build-dev": "webpack --mode development",
-    "build-prod": "webpack --mode production"
+    "clean": "rm dist/*",
+    "prepare": "npm run build-prod",
+    "babel": "babel src -d lib",
+    "build-dev": "npm run babel && webpack --mode development",
+    "build-prod": "npm run babel && webpack"
   },
-  "keywords": [],
+  "keywords": [
+    "network",
+    "measurement",
+    "msak",
+    "multi-stream",
+    "throughput"
+  ],
   "author": "M-Lab",
   "license": "Apache-2.0",
   "devDependencies": {
-    "@babel/core": "^7.22.15",
+    "@babel/cli": "^7.23.4",
+    "@babel/core": "^7.23.7",
     "@babel/eslint-parser": "^7.22.15",
     "@babel/preset-env": "^7.22.15",
     "babel-loader": "^9.1.3",
     "clean-webpack-plugin": "^4.0.0",
-    "copy-webpack-plugin": "^11.0.0",
     "eslint": "^8.48.0",
     "webpack": "^5.88.2",
     "webpack-cli": "^5.1.4"
