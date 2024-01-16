@@ -1,5 +1,6 @@
 const MAX_MESSAGE_SIZE = 8388608; /* = (1<<23) = 8MB */
 const MEASUREMENT_INTERVAL = 250; // ms
+const SCALING_FRACTION = 16;
 
 const workerMain = function (ev) {
 
@@ -118,9 +119,8 @@ const uploadTest = function (sock, now) {
 
         // Message size is doubled after the first 16 messages, and subsequently
         // every 8, up to maxMessageSize.
-        const nextSizeIncrement =
-            (data.length >= MAX_MESSAGE_SIZE) ? Infinity : 16 * data.length;
-        if ((bytesSent - sock.bufferedAmount) >= nextSizeIncrement) {
+        if (data.length < MAX_MESSAGE_SIZE &&
+            data.length < (bytesSent - sock.bufferedAmount) / SCALING_FRACTION) {
             data = new Uint8Array(data.length * 2);
         }
 
