@@ -1,6 +1,6 @@
 {
   "name": "@m-lab/msak",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Client for the MSAK multi-stream throughput measurement protocol",
   "main": "src/msak.js",
   "browser": "dist/msak.js",
