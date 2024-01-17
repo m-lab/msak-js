@@ -5,12 +5,14 @@
   "main": "src/msak.js",
   "browser": "dist/msak.js",
   "exports": "./src/msak.js",
+  "types": "./types/msak.d.ts",
   "scripts": {
     "clean": "rm dist/*",
     "prepare": "npm run build-prod",
     "babel": "babel src -d lib",
+    "types": "tsc",
     "build-dev": "npm run babel && webpack --mode development",
-    "build-prod": "npm run babel && webpack"
+    "build-prod": "npm run babel && npm run types && webpack --mode production"
   },
   "keywords": [
     "network",
@@ -30,6 +32,7 @@
     "clean-webpack-plugin": "^4.0.0",
     "eslint": "^8.48.0",
     "webpack": "^5.88.2",
-    "webpack-cli": "^5.1.4"
+    "webpack-cli": "^5.1.4",
+    "typescript": "^5.3.3"
   }
 }
