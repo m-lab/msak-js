@@ -75,7 +75,7 @@ export class Client {
     }
 
     /**
-     * @param {number} value - The congestion control algorithm to use.
+     * @param {string} value - The congestion control algorithm to use.
      * Must be one of the supported CC algorithms.
      */
     set cc(value) {
@@ -96,7 +96,7 @@ export class Client {
     }
 
      /**
-     * @param {string} value - The duration of the test in milliseconds.
+     * @param {number} value - The duration of the test in milliseconds.
      */
      set duration(value) {
         if (value <= 0 || value > 20000) {
@@ -122,7 +122,7 @@ export class Client {
      * the provided URLSearchParams. If a URLSearchParams is not provided, a new
      * one is created.
      *
-     * @param {URLSearchParams} sp - Starting URLSearchParams to modify (optional)
+     * @param {URLSearchParams} [sp] - Starting URLSearchParams to modify (optional)
      * @returns {URLSearchParams} The complete URLSearchParams
      */
     #setSearchParams(sp) {
@@ -257,8 +257,8 @@ export class Client {
             const downloadURL = new URL(res.urls[this._protocol + '://' + consts.DOWNLOAD_PATH]);
             const uploadURL = new URL(res.urls[this._protocol + '://' + consts.UPLOAD_PATH]);
 
-            downloadURL.search = this.#setSearchParams(downloadURL.searchParams)
-            uploadURL.search = this.#setSearchParams(uploadURL.searchParams)
+            downloadURL.search = this.#setSearchParams(downloadURL.searchParams).toString();
+            uploadURL.search = this.#setSearchParams(uploadURL.searchParams).toString();
 
             return {
                 "///throughput/v1/download": downloadURL,
