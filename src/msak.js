@@ -6,6 +6,32 @@ import { cb, defaultErrCallback } from "./callbacks.js";
  * Client is a client for the MSAK test protocol.
  */
 export class Client {
+
+    #debugEnabled = false;
+    #cc = consts.DEFAULT_CC;
+    #protocol = consts.DEFAULT_PROTOCOL;
+    #streams = consts.DEFAULT_STREAMS;
+    #duration = consts.DEFAULT_DURATION;
+
+    #server = "";
+    #startTime = undefined;
+    #locateCache = [];
+
+    /**
+     * Bytes received for each stream.
+     * Streams are identifed by the array index.
+     * @type {Array}
+     */
+    #bytesReceivedPerStream = [];
+
+    /**
+     * Bytes sent for each stream.
+     * Streams are identifed by the array index.
+     * @type {Array}
+     */
+    #bytesSentPerStream = [];
+
+
     /**
      *
      * Client is a client for the MSAK test protocol. Client name and version
@@ -25,31 +51,6 @@ export class Client {
         this.clientVersion = clientVersion;
         this.callbacks = userCallbacks;
         this.metadata = {};
-
-        this._cc = consts.DEFAULT_CC;
-        this._protocol = consts.DEFAULT_PROTOCOL;
-        this._streams = consts.DEFAULT_STREAMS;
-        this._duration = consts.DEFAULT_DURATION;
-        this._server = "";
-
-        this._startTime = undefined;
-        this._locateCache = [];
-
-        /**
-         * Bytes received for each stream.
-         * Streams are identifed by the array index.
-         * @type {Array}
-         * @public
-         */
-        this._bytesReceivedPerStream = [];
-
-        /**
-         * Bytes sent for each stream.
-         * Streams are identifed by the array index.
-         * @type {Array}
-         * @public
-         */
-        this._bytesSentPerStream = [];
     }
 
     //
@@ -60,7 +61,7 @@ export class Client {
      * @param {boolean} value - Whether to print debug messages to the console.
      */
     set debug(value) {
-        this._debug = value;
+        this.#debugEnabled = value;
     }
 
     /**
@@ -71,18 +72,18 @@ export class Client {
         if (value <= 0 || value > 4) {
             throw new Error("number of streams must be between 1 and 4");
         }
-        this._streams = value;
+        this.#streams = value;
     }
 
     /**
-     * @param {number} value - The congestion control algorithm to use.
+     * @param {string} value - The congestion control algorithm to use.
      * Must be one of the supported CC algorithms.
      */
     set cc(value) {
         if (!consts.SUPPORTED_CC_ALGORITHMS.includes(value)) {
             throw new Error("supported algorithm are " + consts.SUPPORTED_CC_ALGORITHMS);
         }
-        this._cc = value;
+        this.#cc = value;
     }
 
     /**
@@ -92,17 +93,17 @@ export class Client {
         if (value !== 'ws' && value !== 'wss') {
             throw new Error("protocol must be 'ws' or 'wss'");
         }
-        this._protocol = value;
+        this.#protocol = value;
     }
 
-     /**
-     * @param {string} value - The duration of the test in milliseconds.
-     */
-     set duration(value) {
+    /**
+    * @param {number} value - The duration of the test in milliseconds.
+    */
+    set duration(value) {
         if (value <= 0 || value > 20000) {
             throw new Error("duration must be between 1 and 20000");
         }
-        this._duration = value;
+        this.#duration = value;
     }
 
     //
@@ -114,7 +115,7 @@ export class Client {
      * @param {Object} obj - The object to print to the console.
      */
     #debug(obj) {
-        if (this._debug) console.log(obj);
+        if (this.#debugEnabled) console.log(obj);
     }
 
     /**
@@ -122,7 +123,7 @@ export class Client {
      * the provided URLSearchParams. If a URLSearchParams is not provided, a new
      * one is created.
      *
-     * @param {URLSearchParams} sp - Starting URLSearchParams to modify (optional)
+     * @param {URLSearchParams} [sp] - Starting URLSearchParams to modify (optional)
      * @returns {URLSearchParams} The complete URLSearchParams
      */
     #setSearchParams(sp) {
@@ -136,9 +137,9 @@ export class Client {
         sp.set("client_library_version", consts.LIBRARY_VERSION);
 
         // Set protocol options.
-        sp.set("streams", this._streams.toString());
-        sp.set("cc", this._cc);
-        sp.set('duration', this._duration.toString());
+        sp.set("streams", this.#streams.toString());
+        sp.set("cc", this.#cc);
+        sp.set('duration', this.#duration.toString());
 
         // Set additional custom metadata.
         if (this.metadata) {
@@ -150,16 +151,16 @@ export class Client {
     }
 
     #makeURLPairForServer(server) {
-        const downloadURL = new URL(this._protocol + "://" + server + consts.DOWNLOAD_PATH);
-        const uploadURL = new URL(this._protocol + "://" + server + consts.UPLOAD_PATH);
+        const downloadURL = new URL(this.#protocol + "://" + server + consts.DOWNLOAD_PATH);
+        const uploadURL = new URL(this.#protocol + "://" + server + consts.UPLOAD_PATH);
 
         let sp = this.#setSearchParams()
         downloadURL.search = sp.toString();
         uploadURL.search = sp.toString();
 
         // Set protocol.
-        downloadURL.protocol = this._protocol;
-        uploadURL.protocol = this._protocol;
+        downloadURL.protocol = this.#protocol;
+        uploadURL.protocol = this.#protocol;
 
         return {
             "///throughput/v1/download": downloadURL.toString(),
@@ -170,8 +171,8 @@ export class Client {
     #handleWorkerEvent(ev, testType, id, worker) {
         let message = ev.data
         if (message.type == 'connect') {
-            if (!this._startTime) {
-                this._startTime = performance.now();
+            if (!this.#startTime) {
+                this.#startTime = performance.now();
                 this.#debug('setting global start time to ' + performance.now());
             }
         }
@@ -205,11 +206,11 @@ export class Client {
             }
 
             if (measurement) {
-                this._bytesReceivedPerStream[id] = measurement.Application.BytesReceived;
+                this.#bytesReceivedPerStream[id] = measurement.Application.BytesReceived;
 
-                const elapsed = (performance.now() - this._startTime) / 1000;
-                const goodput = this._bytesReceivedPerStream[id] / measurement.ElapsedTime * 8;
-                const aggregateGoodput = this._bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
+                const elapsed = (performance.now() - this.#startTime) / 1000;
+                const goodput = this.#bytesReceivedPerStream[id] / measurement.ElapsedTime * 8;
+                const aggregateGoodput = this.#bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
                     elapsed / 1e6 * 8;
 
                 this.#debug('stream #' + id + ' elapsed ' + (measurement.ElapsedTime / 1e6).toFixed(2) + 's' +
@@ -252,13 +253,13 @@ export class Client {
          * @returns {Object}  A map of URLs for the download and upload.
          */
         let makeURLs = () => {
-            const res = this._locateCache.shift()
+            const res = this.#locateCache.shift()
 
-            const downloadURL = new URL(res.urls[this._protocol + '://' + consts.DOWNLOAD_PATH]);
-            const uploadURL = new URL(res.urls[this._protocol + '://' + consts.UPLOAD_PATH]);
+            const downloadURL = new URL(res.urls[this.#protocol + '://' + consts.DOWNLOAD_PATH]);
+            const uploadURL = new URL(res.urls[this.#protocol + '://' + consts.UPLOAD_PATH]);
 
-            downloadURL.search = this.#setSearchParams(downloadURL.searchParams)
-            uploadURL.search = this.#setSearchParams(uploadURL.searchParams)
+            downloadURL.search = this.#setSearchParams(downloadURL.searchParams);
+            uploadURL.search = this.#setSearchParams(uploadURL.searchParams);
 
             return {
                 "///throughput/v1/download": downloadURL,
@@ -267,9 +268,9 @@ export class Client {
         }
 
         // If this is the first call or the cache is empty, query the Locate service.
-        if (this._locateCache.length == 0) {
+        if (this.#locateCache.length == 0) {
             const results = await discoverServerURLs(this.clientName, this.clientVersion)
-            this._locateCache = results;
+            this.#locateCache = results;
             return makeURLs();
         } else {
             return makeURLs();
@@ -299,7 +300,7 @@ export class Client {
      */
     async download(serverURL) {
         let workerFile = this.downloadWorkerFile || new URL('download.js', import.meta.url);
-        this.#debug('Starting ' + this._streams + ' download streams with URL '
+        this.#debug('Starting ' + this.#streams + ' download streams with URL '
             + serverURL.toString());
 
         // Set callbacks.
@@ -311,12 +312,12 @@ export class Client {
         }
 
         // Reset byte counters and start time.
-        this._bytesReceivedPerStream = [];
-        this._bytesSentPerStream = [];
-        this._startTime = undefined;
+        this.#bytesReceivedPerStream = [];
+        this.#bytesSentPerStream = [];
+        this.#startTime = undefined;
 
         let workerPromises = [];
-        for (let i = 0; i < this._streams; i++) {
+        for (let i = 0; i < this.#streams; i++) {
             workerPromises.push(this.runWorker('download', workerFile, serverURL, i));
         }
         await Promise.all(workerPromises);
@@ -324,7 +325,7 @@ export class Client {
 
     async upload(serverURL) {
         let workerFile = this.uploadWorkerFile || new URL('upload.js', import.meta.url);
-        this.#debug('Starting ' + this._streams + ' upload streams with URL '
+        this.#debug('Starting ' + this.#streams + ' upload streams with URL '
             + serverURL.toString());
 
         // Set callbacks.
@@ -336,12 +337,12 @@ export class Client {
         }
 
         // Reset byte counters and start time.
-        this._bytesReceivedPerStream = [];
-        this._bytesSentPerStream = [];
-        this._startTime = undefined;
+        this.#bytesReceivedPerStream = [];
+        this.#bytesSentPerStream = [];
+        this.#startTime = undefined;
 
         let workerPromises = [];
-        for (let i = 0; i < this._streams; i++) {
+        for (let i = 0; i < this.#streams; i++) {
             workerPromises.push(this.runWorker('upload', workerFile, serverURL, i));
         }
         await Promise.all(workerPromises);
@@ -365,7 +366,7 @@ export class Client {
 
         // If the server did not close the connection already by then, terminate
         // the worker and resolve the promise after the expected duration + 1s.
-        setTimeout(() => worker.resolve(0), this._duration + 1000);
+        setTimeout(() => worker.resolve(0), this.#duration + 1000);
 
 
         worker.onmessage = (ev) => {

@@ -1,16 +1,19 @@
 {
   "name": "@m-lab/msak",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Client for the MSAK multi-stream throughput measurement protocol",
   "main": "src/msak.js",
   "browser": "dist/msak.js",
   "exports": "./src/msak.js",
+  "types": "./types/msak.d.ts",
   "scripts": {
-    "clean": "rm dist/*",
+    "clean": "rm dist/* && rm lib/*",
     "prepare": "npm run build-prod",
     "babel": "babel src -d lib",
-    "build-dev": "npm run babel && webpack --mode development",
-    "build-prod": "npm run babel && webpack"
+    "types": "tsc",
+    "compile": "npm run babel && npm run types",
+    "build-dev": "npm run compile && webpack --mode development",
+    "build-prod": "npm run compile && webpack --mode production"
   },
   "keywords": [
     "network",
@@ -30,6 +33,7 @@
     "clean-webpack-plugin": "^4.0.0",
     "eslint": "^8.48.0",
     "webpack": "^5.88.2",
-    "webpack-cli": "^5.1.4"
+    "webpack-cli": "^5.1.4",
+    "typescript": "^5.3.3"
   }
 }
