@@ -7,12 +7,13 @@
   "exports": "./src/msak.js",
   "types": "./types/msak.d.ts",
   "scripts": {
-    "clean": "rm dist/*",
+    "clean": "rm dist/* && rm lib/*",
     "prepare": "npm run build-prod",
     "babel": "babel src -d lib",
     "types": "tsc",
-    "build-dev": "npm run babel && webpack --mode development",
-    "build-prod": "npm run babel && npm run types && webpack --mode production"
+    "compile": "npm run babel && npm run types",
+    "build-dev": "npm run compile && webpack --mode development",
+    "build-prod": "npm run compile && webpack --mode production"
   },
   "keywords": [
     "network",
