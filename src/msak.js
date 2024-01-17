@@ -257,8 +257,8 @@ export class Client {
             const downloadURL = new URL(res.urls[this._protocol + '://' + consts.DOWNLOAD_PATH]);
             const uploadURL = new URL(res.urls[this._protocol + '://' + consts.UPLOAD_PATH]);
 
-            downloadURL.search = this.#setSearchParams(downloadURL.searchParams).toString();
-            uploadURL.search = this.#setSearchParams(uploadURL.searchParams).toString();
+            downloadURL.search = this.#setSearchParams(downloadURL.searchParams);
+            uploadURL.search = this.#setSearchParams(uploadURL.searchParams);
 
             return {
                 "///throughput/v1/download": downloadURL,
