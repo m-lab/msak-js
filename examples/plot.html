@@ -78,7 +78,7 @@
             uploadAggr.y = [];
 
             Plotly.newPlot('download-plot', dlData, downloadLayout);
-            Plotly.newPlot('upload-plot', dlData, uploadLayout);
+            Plotly.newPlot('upload-plot', ulData, uploadLayout);
 
             m = new msak.Client("msakjs-example", "0.1.0", {
                 onDownloadResult: (result) => {
