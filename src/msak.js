@@ -221,7 +221,6 @@ export class Client {
             }
 
             if (measurement) {
-                console.log("measurement");
                 this.#bytesReceivedPerStream[id] = measurement.Application.BytesReceived || 0;
                 this.#bytesSentPerStream[id] = measurement.Application.BytesSent || 0;
 
