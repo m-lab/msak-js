@@ -1,7 +1,8 @@
 const workerMain = function (ev) {
 
     // Establish WebSocket connection to the URL passed by the caller.
-    const url = new URL(ev.data);
+    const url = new URL(ev.data.url);
+    const byteLimit = ev.data.bytes;
 
     console.log("Connecting to " + url);
     const sock = new WebSocket(url, 'net.measurementlab.throughput.v1');
@@ -17,10 +18,10 @@ const workerMain = function (ev) {
     } else {
         now = () => Date.now();
     }
-    downloadTest(sock, now);
+    downloadTest(sock, byteLimit, now);
 };
 
-const downloadTest = function(sock, now) {
+const downloadTest = function(sock, byteLimit, now) {
 
     let start;
     let previous;
@@ -28,6 +29,19 @@ const downloadTest = function(sock, now) {
     let bytesSent;
 
     sock.onclose = function() {
+        // Create and post one last measurement object to the main thread.
+        const t = now();
+        const measurement = {
+            Application: {
+                BytesReceived: bytesReceived,
+                BytesSent: bytesSent,
+            },
+            ElapsedTime: (t - start) * 1000,
+        };
+        postMessage({
+            type: 'measurement',
+            client: measurement,
+        });
         postMessage({
             type: 'close',
         });
@@ -55,6 +69,7 @@ const downloadTest = function(sock, now) {
     sock.onmessage = function(ev) {
         bytesReceived +=
             (typeof ev.data.size !== 'undefined') ? ev.data.size : ev.data.length;
+
         const t = now();
         const every = 200; // ms
 

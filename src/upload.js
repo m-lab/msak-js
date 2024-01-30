@@ -5,7 +5,9 @@ const SCALING_FRACTION = 16;
 const workerMain = function (ev) {
 
     // Establish WebSocket connection to the URL passed by the caller.
-    const url = new URL(ev.data);
+    const url = new URL(ev.data.url);
+    const byteLimit = ev.data.bytes;
+
     console.log("Connecting to " + url);
     const sock = new WebSocket(url, 'net.measurementlab.throughput.v1');
     console.log("Connection established");
@@ -20,10 +22,10 @@ const workerMain = function (ev) {
     } else {
         now = () => Date.now();
     }
-    uploadTest(sock, now);
+    uploadTest(sock, byteLimit, now);
 };
 
-const uploadTest = function (sock, now) {
+const uploadTest = function (sock, byteLimit, now) {
     let closed = false;
     let bytesReceived;
     let bytesSent;
@@ -117,11 +119,12 @@ const uploadTest = function (sock, now) {
             return;
         }
 
-        // Message size is doubled after the first 16 messages, and subsequently
-        // every 8, up to maxMessageSize.
-        if (data.length < MAX_MESSAGE_SIZE &&
-            data.length < (bytesSent - sock.bufferedAmount) / SCALING_FRACTION) {
-            data = new Uint8Array(data.length * 2);
+        // Check if we are over the limit and, if so, stop the uploader loop.
+        // The server is going to close the connection after the byte limit has
+        // been reached or the duration timeout has expired. Meanwhile, the client
+        // keeps running and handling WebSocket events.
+        if (bytesSent >= byteLimit) {
+            return;
         }
 
         // We keep 7 messages in the send buffer, so there is always some more
@@ -130,6 +133,22 @@ const uploadTest = function (sock, now) {
         if (sock.bufferedAmount < desiredBuffer) {
             sock.send(data);
             bytesSent += data.length;
+        }
+
+        // Message size is doubled after the first 16 messages, and subsequently
+        // every 8, up to maxMessageSize.
+        const origSize = data.length;
+        console.log("origSize " + origSize);
+
+        if (origSize < MAX_MESSAGE_SIZE &&
+            origSize < bytesSent / SCALING_FRACTION) {
+            size = scaleMessage(origSize)
+        } else {
+            size = scaleMessage(origSize * 2);
+        }
+
+        if (size != origSize) {
+            data = new Uint8Array(size);
         }
 
         if (t >= previous + MEASUREMENT_INTERVAL) {
@@ -155,6 +174,16 @@ const uploadTest = function (sock, now) {
 
         // Loop the uploader function in a way that respects the JS event handler.
         setTimeout(() => uploader(data, start, end, previous), 0);
+    }
+
+    function scaleMessage(msgSize) {
+        // Check if the next payload size will push the total number of bytes over the limit.
+        const excess = bytesSent + msgSize - byteLimit;
+        if (byteLimit > 0 && excess > 0) {
+            console.log("Excess " + excess + " bytes");
+            msgSize -= excess;
+        }
+        return msgSize;
     }
 };
 
