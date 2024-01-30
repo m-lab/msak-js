@@ -143,7 +143,7 @@ const uploadTest = function (sock, byteLimit, now) {
             origSize > bytesSent / SCALING_FRACTION) {
             size = scaleMessage(origSize);
         } else {
-            console.log("increasing to " + origSize * 2);
+            console.log("Increasing message size to " + origSize * 2 + " bytes");
             size = scaleMessage(origSize * 2);
         }
 
