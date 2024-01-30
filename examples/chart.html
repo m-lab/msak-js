@@ -21,6 +21,9 @@
                 <option value="cubic">cubic</option>
                 <option value="bbr" selected>bbr</option>
             </select>
+        </label><br>
+        <label>Byte limit:
+            <input type="text" id="bytes" value="">
         </label><br><br>
         <button id="start">Start</button>
     </div><br>
@@ -110,6 +113,11 @@
             m.cc = document.getElementById("cc").value;
             m.duration = document.getElementById("duration").value;
             m.streams = document.getElementById("streams").value;
+
+            const byteLimit = document.getElementById("bytes").value;
+            if (byteLimit > 0) {
+                m.bytes = byteLimit;
+            }
             console.log("starting with cc " + m.cc + " duration " + m.duration + " streams " + m.streams);
             m.start();
         }

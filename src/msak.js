@@ -12,6 +12,7 @@ export class Client {
     #protocol = consts.DEFAULT_PROTOCOL;
     #streams = consts.DEFAULT_STREAMS;
     #duration = consts.DEFAULT_DURATION;
+    #byteLimit = 0;
 
     #server = "";
     #startTime = undefined;
@@ -106,6 +107,16 @@ export class Client {
         this.#duration = value;
     }
 
+    /**
+     * @param {number} value - The maximum number of bytes to send/receive.
+     */
+    set bytes(value) {
+        if (value < 0) {
+            throw new Error("bytes must be greater than 0");
+        }
+        this.#byteLimit = value;
+    }
+
     //
     // Private methods
     //
@@ -140,6 +151,7 @@ export class Client {
         sp.set("streams", this.#streams.toString());
         sp.set("cc", this.#cc);
         sp.set('duration', this.#duration.toString());
+        sp.set("bytes", this.#byteLimit.toString());
 
         // Set additional custom metadata.
         if (this.metadata) {
@@ -190,14 +202,17 @@ export class Client {
 
         if (message.type == 'measurement') {
             let measurement;
+            let source = "";
             switch (testType) {
                 case 'download':
                     if (message.client) {
+                        source = 'client';
                         measurement = message.client;
                     }
                     break;
                 case 'upload':
                     if (message.server) {
+                        source = 'server';
                         measurement = JSON.parse(message.server);
                     }
                     break;
@@ -206,7 +221,8 @@ export class Client {
             }
 
             if (measurement) {
-                this.#bytesReceivedPerStream[id] = measurement.Application.BytesReceived;
+                this.#bytesReceivedPerStream[id] = measurement.Application.BytesReceived || 0;
+                this.#bytesSentPerStream[id] = measurement.Application.BytesSent || 0;
 
                 const elapsed = (performance.now() - this.#startTime) / 1000;
                 const goodput = this.#bytesReceivedPerStream[id] / measurement.ElapsedTime * 8;
@@ -215,8 +231,8 @@ export class Client {
 
                 this.#debug('stream #' + id + ' elapsed ' + (measurement.ElapsedTime / 1e6).toFixed(2) + 's' +
                     ' application r/w: ' +
-                    measurement.Application.BytesReceived + '/' +
-                    measurement.Application.BytesSent +
+                    this.#bytesReceivedPerStream[id] + '/' +
+                    this.#bytesSentPerStream[id] + ' bytes' +
                     ' stream goodput: ' + goodput.toFixed(2) + ' Mb/s' +
                     ' aggr goodput: ' + aggregateGoodput.toFixed(2) + ' Mb/s');
 
@@ -225,7 +241,7 @@ export class Client {
                     stream: id,
                     goodput: goodput,
                     measurement: measurement,
-                    source: 'client',
+                    source: source,
                 });
 
                 this.callbacks.onResult({
@@ -372,7 +388,10 @@ export class Client {
         worker.onmessage = (ev) => {
             this.#handleWorkerEvent(ev, testType, streamID, worker);
         };
-        worker.postMessage(serverURL.toString());
+        worker.postMessage({
+            url: serverURL.toString(),
+            bytes: this.#byteLimit
+        });
 
         return workerPromise;
     }
