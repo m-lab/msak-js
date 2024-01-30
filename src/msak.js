@@ -111,7 +111,7 @@ export class Client {
      * @param {number} value - The maximum number of bytes to send/receive.
      */
     set bytes(value) {
-        if (value <= 0) {
+        if (value < 0) {
             throw new Error("bytes must be greater than 0");
         }
         this.#byteLimit = value;

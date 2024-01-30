@@ -139,8 +139,7 @@ const uploadTest = function (sock, byteLimit, now) {
         // every 8, up to maxMessageSize.
         const origSize = data.length;
 
-        if (origSize < MAX_MESSAGE_SIZE &&
-            origSize > bytesSent / SCALING_FRACTION) {
+        if (origSize >= MAX_MESSAGE_SIZE || origSize > bytesSent / SCALING_FRACTION) {
             size = scaleMessage(origSize);
         } else {
             console.log("Increasing message size to " + origSize * 2 + " bytes");
