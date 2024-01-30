@@ -6,7 +6,7 @@ const workerMain = function (ev) {
 
     // Establish WebSocket connection to the URL passed by the caller.
     const url = new URL(ev.data.url);
-    const byteLimit = ev.data.bytes;
+    const byteLimit = ev.data.bytes || 0;
 
     console.log("Connecting to " + url);
     const sock = new WebSocket(url, 'net.measurementlab.throughput.v1');
@@ -123,7 +123,7 @@ const uploadTest = function (sock, byteLimit, now) {
         // The server is going to close the connection after the byte limit has
         // been reached or the duration timeout has expired. Meanwhile, the client
         // keeps running and handling WebSocket events.
-        if (bytesSent >= byteLimit) {
+        if (byteLimit > 0 && bytesSent >= byteLimit) {
             return;
         }
 
@@ -140,9 +140,10 @@ const uploadTest = function (sock, byteLimit, now) {
         const origSize = data.length;
 
         if (origSize < MAX_MESSAGE_SIZE &&
-            origSize < bytesSent / SCALING_FRACTION) {
-            size = scaleMessage(origSize)
+            origSize > bytesSent / SCALING_FRACTION) {
+            size = scaleMessage(origSize);
         } else {
+            console.log("increasing to " + origSize * 2);
             size = scaleMessage(origSize * 2);
         }
 
