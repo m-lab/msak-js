@@ -138,7 +138,6 @@ const uploadTest = function (sock, byteLimit, now) {
         // Message size is doubled after the first 16 messages, and subsequently
         // every 8, up to maxMessageSize.
         const origSize = data.length;
-        console.log("origSize " + origSize);
 
         if (origSize < MAX_MESSAGE_SIZE &&
             origSize < bytesSent / SCALING_FRACTION) {
@@ -180,7 +179,6 @@ const uploadTest = function (sock, byteLimit, now) {
         // Check if the next payload size will push the total number of bytes over the limit.
         const excess = bytesSent + msgSize - byteLimit;
         if (byteLimit > 0 && excess > 0) {
-            console.log("Excess " + excess + " bytes");
             msgSize -= excess;
         }
         return msgSize;
