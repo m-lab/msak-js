@@ -32,6 +32,18 @@ export class Client {
      */
     #bytesSentPerStream = [];
 
+    /**
+     * Retransmission (BytesRetrans / BytesSent) for each stream.
+     * Streams are identifed by the array index.
+     * @type {Array}
+     */
+    #retransmissionPerStream = [];
+    /**
+     * Last MinRTT value for each stream.
+     * Streams are identifed by the array index.
+     * @type {Array}
+     */
+    #minRTTPerStream = [];
 
     /**
      *
@@ -203,6 +215,17 @@ export class Client {
         if (message.type == 'measurement') {
             let measurement;
             let source = "";
+
+            let parsedMeasurement;
+            if (message.server) {
+                parsedMeasurement = JSON.parse(message.server);
+                if (parsedMeasurement.TCPInfo) {
+                    const tcpInfo = parsedMeasurement.TCPInfo;
+                    this.#minRTTPerStream[id] = tcpInfo.MinRTT;
+                    this.#retransmissionPerStream[id] = tcpInfo.BytesRetrans / tcpInfo.BytesSent;
+                }
+            }
+
             switch (testType) {
                 case 'download':
                     if (message.client) {
@@ -213,7 +236,7 @@ export class Client {
                 case 'upload':
                     if (message.server) {
                         source = 'server';
-                        measurement = JSON.parse(message.server);
+                        measurement = parsedMeasurement;
                     }
                     break;
                 default:
@@ -229,12 +252,22 @@ export class Client {
                 const aggregateGoodput = this.#bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
                     elapsed / 1e6 * 8;
 
+                // Compute the average retransmission of all streams.
+                let avgRetrans = 0;
+                if (this.#bytesReceivedPerStream.length > 0) {
+                    avgRetrans = this.#retransmissionPerStream.reduce((a, b) => a + b, 0) /
+                        this.#retransmissionPerStream.length;
+                }
+
                 this.#debug('stream #' + id + ' elapsed ' + (measurement.ElapsedTime / 1e6).toFixed(2) + 's' +
                     ' application r/w: ' +
                     this.#bytesReceivedPerStream[id] + '/' +
                     this.#bytesSentPerStream[id] + ' bytes' +
                     ' stream goodput: ' + goodput.toFixed(2) + ' Mb/s' +
-                    ' aggr goodput: ' + aggregateGoodput.toFixed(2) + ' Mb/s');
+                    ' aggr goodput: ' + aggregateGoodput.toFixed(2) + ' Mb/s' +
+                    ' stream minRTT: ' + this.#minRTTPerStream[id] +
+                    ' retrans: ' + this.#retransmissionPerStream[id] +
+                    ' avg retrans: ' + avgRetrans);
 
                 this.callbacks.onMeasurement({
                     elapsed: elapsed,
@@ -246,7 +279,9 @@ export class Client {
 
                 this.callbacks.onResult({
                     elapsed: elapsed,
-                    goodput: aggregateGoodput
+                    goodput: aggregateGoodput,
+                    retransmission: avgRetrans,
+                    latency: this.#minRTTPerStream[id], // TODO: min(minRTT)?
                 });
             }
         }
@@ -330,6 +365,8 @@ export class Client {
         // Reset byte counters and start time.
         this.#bytesReceivedPerStream = [];
         this.#bytesSentPerStream = [];
+        this.#retransmissionPerStream = [];
+        this.#minRTTPerStream = [];
         this.#startTime = undefined;
 
         let workerPromises = [];
