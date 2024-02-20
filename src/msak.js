@@ -19,19 +19,25 @@ export class Client {
     #locateCache = [];
 
     /**
-     * Bytes received for each stream.
+     * Application-level bytes received for each stream.
      * Streams are identifed by the array index.
-     * @type {Array}
+     * @type {number[]}
      */
     #bytesReceivedPerStream = [];
 
     /**
-     * Bytes sent for each stream.
+     * Application-level bytes sent for each stream.
      * Streams are identifed by the array index.
-     * @type {Array}
+     * @type {number[]}
      */
     #bytesSentPerStream = [];
 
+    /**
+     * Last TCPInfo object received for each stream.
+     * Streams are identifed by the array index.
+     * @type {Object[]}
+     */
+    #lastTCPInfoPerStream = [];
 
     /**
      *
@@ -203,6 +209,20 @@ export class Client {
         if (message.type == 'measurement') {
             let measurement;
             let source = "";
+            let parsedMeasurement;
+
+            // If this is a server-side measurement, read data from TCPInfo
+            // regardless of the test direction.
+            if (message.server) {
+                // Keep the parsed measurement aside to avoid calling JSON.parse
+                // twice in case this is an upload.
+                parsedMeasurement = JSON.parse(message.server);
+
+                if (parsedMeasurement.TCPInfo) {
+                    this.#lastTCPInfoPerStream[id] = parsedMeasurement.TCPInfo;
+                }
+            }
+
             switch (testType) {
                 case 'download':
                     if (message.client) {
@@ -213,7 +233,7 @@ export class Client {
                 case 'upload':
                     if (message.server) {
                         source = 'server';
-                        measurement = JSON.parse(message.server);
+                        measurement = parsedMeasurement;
                     }
                     break;
                 default:
@@ -229,12 +249,25 @@ export class Client {
                 const aggregateGoodput = this.#bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
                     elapsed / 1e6 * 8;
 
+                // Compute the average retransmission of all streams.
+                let avgRetrans = 0;
+                if (this.#lastTCPInfoPerStream.length > 0) {
+                    avgRetrans = this.#lastTCPInfoPerStream.reduce((a, b) => a + b.BytesRetrans, 0) /
+                        this.#lastTCPInfoPerStream.reduce((a, b) => a + b.BytesSent, 0);
+                }
+
                 this.#debug('stream #' + id + ' elapsed ' + (measurement.ElapsedTime / 1e6).toFixed(2) + 's' +
                     ' application r/w: ' +
                     this.#bytesReceivedPerStream[id] + '/' +
                     this.#bytesSentPerStream[id] + ' bytes' +
                     ' stream goodput: ' + goodput.toFixed(2) + ' Mb/s' +
-                    ' aggr goodput: ' + aggregateGoodput.toFixed(2) + ' Mb/s');
+                    ' aggr goodput: ' + aggregateGoodput.toFixed(2) + ' Mb/s' +
+                    ' stream minRTT: ' + (this.#lastTCPInfoPerStream[id] !== undefined ?
+                            this.#lastTCPInfoPerStream[id].MinRTT : "n/a") +
+                    ' retrans: ' + (this.#lastTCPInfoPerStream[id] !== undefined ?
+                            this.#lastTCPInfoPerStream[id].BytesRetrans /
+                            this.#lastTCPInfoPerStream[id].BytesSent : "n/a") +
+                    ' avg retrans: ' + avgRetrans);
 
                 this.callbacks.onMeasurement({
                     elapsed: elapsed,
@@ -246,7 +279,9 @@ export class Client {
 
                 this.callbacks.onResult({
                     elapsed: elapsed,
-                    goodput: aggregateGoodput
+                    goodput: aggregateGoodput,
+                    retransmission: avgRetrans,
+                    minRTT: Math.min(this.#lastTCPInfoPerStream.map(x => x.MinRTT)),
                 });
             }
         }
@@ -330,6 +365,7 @@ export class Client {
         // Reset byte counters and start time.
         this.#bytesReceivedPerStream = [];
         this.#bytesSentPerStream = [];
+        this.#lastTCPInfoPerStream = [];
         this.#startTime = undefined;
 
         let workerPromises = [];
