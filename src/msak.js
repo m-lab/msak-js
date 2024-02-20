@@ -41,7 +41,7 @@ export class Client {
     /**
      * Last MinRTT value for each stream.
      * Streams are identifed by the array index.
-     * @type {Array}
+     * @type {number[]}
      */
     #minRTTPerStream = [];
 
@@ -215,10 +215,15 @@ export class Client {
         if (message.type == 'measurement') {
             let measurement;
             let source = "";
-
             let parsedMeasurement;
+
+            // If this is a server-side measurement, read data from TCPInfo
+            // regardless of the test direction.
             if (message.server) {
+                // Keep the parsed measurement aside to avoid calling JSON.parse
+                // twice in case this is an upload.
                 parsedMeasurement = JSON.parse(message.server);
+
                 if (parsedMeasurement.TCPInfo) {
                     const tcpInfo = parsedMeasurement.TCPInfo;
                     this.#minRTTPerStream[id] = tcpInfo.MinRTT;
@@ -281,7 +286,7 @@ export class Client {
                     elapsed: elapsed,
                     goodput: aggregateGoodput,
                     retransmission: avgRetrans,
-                    latency: this.#minRTTPerStream[id], // TODO: min(minRTT)?
+                    minRTT: min(this.#minRTTPerStream),
                 });
             }
         }
