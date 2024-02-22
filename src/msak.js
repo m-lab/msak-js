@@ -342,6 +342,7 @@ export class Client {
         } else {
             serverURLs = await this.#nextURLsFromLocate();
         }
+
         await this.download(serverURLs['//' + consts.DOWNLOAD_PATH]);
         await this.upload(serverURLs['//' + consts.UPLOAD_PATH]);
     }
@@ -357,6 +358,7 @@ export class Client {
         // Set callbacks.
         this.callbacks = {
             ...this.callbacks,
+            onStart: cb('onDownloadStart', this.callbacks),
             onResult: cb('onDownloadResult', this.callbacks),
             onMeasurement: cb('onDownloadMeasurement', this.callbacks),
             onError: cb('onError', this.callbacks, defaultErrCallback),
@@ -383,6 +385,7 @@ export class Client {
         // Set callbacks.
         this.callbacks = {
             ...this.callbacks,
+            onStart: cb('onUploadStart', this.callbacks),
             onResult: cb('onUploadResult', this.callbacks),
             onMeasurement: cb('onUploadMeasurement', this.callbacks),
             onError: cb('onError', this.callbacks, defaultErrCallback),
@@ -391,6 +394,7 @@ export class Client {
         // Reset byte counters and start time.
         this.#bytesReceivedPerStream = [];
         this.#bytesSentPerStream = [];
+        this.#lastTCPInfoPerStream = [];
         this.#startTime = undefined;
 
         let workerPromises = [];
