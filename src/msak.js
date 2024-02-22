@@ -1,6 +1,7 @@
 import { discoverServerURLs } from "./locate";
 import * as consts from "./consts";
 import { cb, defaultErrCallback } from "./callbacks.js";
+import { UAParser } from "ua-parser-js";
 
 /**
  * Client is a client for the MSAK test protocol.
@@ -152,6 +153,17 @@ export class Client {
         sp.set("client_version", this.clientVersion);
         sp.set("client_library_name", consts.LIBRARY_NAME);
         sp.set("client_library_version", consts.LIBRARY_VERSION);
+
+        // Extract metadata from the UA.
+        const parser = new UAParser(navigator.userAgent);
+        if (parser.getBrowser().name)
+            sp.set("client_browser", parser.getBrowser().name.toLowerCase());
+        if (parser.getOS().name)
+            sp.set("client_os", parser.getOS().name.toLowerCase());
+        if (parser.getDevice().type)
+            sp.set("client_device", parser.getDevice().type.toLowerCase());
+        if (parser.getCPU().architecture)
+            sp.set("client_arch", parser.getCPU().architecture.toLowerCase());
 
         // Set protocol options.
         sp.set("streams", this.#streams.toString());
