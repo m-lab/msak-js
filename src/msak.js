@@ -181,12 +181,8 @@ export class Client {
         uploadURL.protocol = this.#protocol;
 
         return {
-            "///throughput/v1/download": {
-                url: downloadURL.toString()
-            },
-            "///throughput/v1/upload": {
-                url: uploadURL.toString()
-            }
+            download: downloadURL.toString(),
+            upload: uploadURL.toString()
         };
     }
 
@@ -292,22 +288,24 @@ export class Client {
     }
 
     /**
-     * Retrieves the next download/upload URL pair from the Locate service. On
-     * the first invocation, it requests new URLs for nearby servers from the
-     * Locate service. On subsequent invocations, it returns the next cached
-     * result.
+     * Retrieves the next download/upload server from the Locate service. On
+     * the first invocation, it requests new nearby servers  from the Locate
+     * service. On subsequent invocations, it returns the next cached result.
      *
-     * All the returned URLs include protocol options and metadata in the
-     * querystring.
-     * @returns A map of two URLs - one for download, one for upload.
+     * All the returned download/upload URLs include protocol options and
+     * metadata in the querystring.
+     *
+     * @returns {Object} An object containing download/upload URLs and
+     * location/machine metadata.
      */
-    async #nextURLsFromLocate() {
+    async #nextServerFromLocate() {
         /**
-         * Returns URLs for the download and upload endpoints including all
-         * querystring parameters.
-         * @returns {Object}  A map of URLs for the download and upload.
+         * Gets the next result from the locate cache and adds metadata to the
+         * download/upload URLs.
+         * @returns {Object} An object containing download/upload URLs and
+         * location/machine metadata.
          */
-        let makeURLs = () => {
+        let getFromCache = () => {
             const res = this.#locateCache.shift()
 
             const downloadURL = new URL(res.urls[this.#protocol + '://' + consts.DOWNLOAD_PATH]);
@@ -317,16 +315,10 @@ export class Client {
             uploadURL.search = this.#setSearchParams(uploadURL.searchParams);
 
             return {
-                "///throughput/v1/download": {
-                    location: res.location,
-                    machine: res.machine,
-                    url: downloadURL
-                },
-                "///throughput/v1/upload": {
-                    location: res.location,
-                    machine: res.machine,
-                    url: uploadURL
-                }
+                location: res.location,
+                machine: res.machine,
+                download: downloadURL,
+                upload: uploadURL
             };
         }
 
@@ -334,9 +326,9 @@ export class Client {
         if (this.#locateCache.length == 0) {
             const results = await discoverServerURLs(this.clientName, this.clientVersion)
             this.#locateCache = results;
-            return makeURLs();
+            return getFromCache();
         } else {
-            return makeURLs();
+            return getFromCache();
         }
     }
 
@@ -344,19 +336,19 @@ export class Client {
 
     /**
      *
-     * @param {string} [server] - The server to connect to.  If not specified,
+     * @param {string} [serverStr] - The server to connect to.  If not specified,
      * will query the Locate service to get a nearby server.
      */
-    async start(server) {
-        let serverURLs;
-        if (server) {
-            serverURLs = this.#makeURLPairForServer(server);
+    async start(serverStr) {
+        let server;
+        if (serverStr) {
+            server = this.#makeURLPairForServer(serverStr);
         } else {
-            serverURLs = await this.#nextURLsFromLocate();
+            server = await this.#nextServerFromLocate();
         }
 
-        await this.download(serverURLs['//' + consts.DOWNLOAD_PATH]);
-        await this.upload(serverURLs['//' + consts.UPLOAD_PATH]);
+        await this.download(server);
+        await this.upload(server);
     }
 
     /**
@@ -365,7 +357,7 @@ export class Client {
     async download(server) {
         let workerFile = this.downloadWorkerFile || new URL('download.js', import.meta.url);
         this.#debug('Starting ' + this.#streams + ' download streams with URL '
-            + server.url);
+            + server.download);
 
         // Set callbacks.
         this.callbacks = {
@@ -392,7 +384,7 @@ export class Client {
     async upload(server) {
         let workerFile = this.uploadWorkerFile || new URL('upload.js', import.meta.url);
         this.#debug('Starting ' + this.#streams + ' upload streams with URL '
-            + server.url);
+            + server.upload);
 
         // Set callbacks.
         this.callbacks = {
@@ -443,7 +435,7 @@ export class Client {
         this.callbacks.onStart(server);
 
         worker.postMessage({
-            url: server.url.toString(),
+            url: server[testType].toString(),
             bytes: this.#byteLimit
         });
 
