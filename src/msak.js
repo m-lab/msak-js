@@ -181,8 +181,12 @@ export class Client {
         uploadURL.protocol = this.#protocol;
 
         return {
-            "///throughput/v1/download": downloadURL.toString(),
-            "///throughput/v1/upload": uploadURL.toString()
+            "///throughput/v1/download": {
+                url: downloadURL.toString()
+            },
+            "///throughput/v1/upload": {
+                url: uploadURL.toString()
+            }
         };
     }
 
@@ -313,8 +317,16 @@ export class Client {
             uploadURL.search = this.#setSearchParams(uploadURL.searchParams);
 
             return {
-                "///throughput/v1/download": downloadURL,
-                "///throughput/v1/upload": uploadURL
+                "///throughput/v1/download": {
+                    location: res.location,
+                    machine: res.machine,
+                    url: downloadURL
+                },
+                "///throughput/v1/upload": {
+                    location: res.location,
+                    machine: res.machine,
+                    url: uploadURL
+                }
             };
         }
 
@@ -348,12 +360,12 @@ export class Client {
     }
 
     /**
-     * @param {string} serverURL
+     * @param {Object} server
      */
-    async download(serverURL) {
+    async download(server) {
         let workerFile = this.downloadWorkerFile || new URL('download.js', import.meta.url);
         this.#debug('Starting ' + this.#streams + ' download streams with URL '
-            + serverURL.toString());
+            + server.url);
 
         // Set callbacks.
         this.callbacks = {
@@ -372,15 +384,15 @@ export class Client {
 
         let workerPromises = [];
         for (let i = 0; i < this.#streams; i++) {
-            workerPromises.push(this.runWorker('download', workerFile, serverURL, i));
+            workerPromises.push(this.runWorker('download', workerFile, server, i));
         }
         await Promise.all(workerPromises);
     }
 
-    async upload(serverURL) {
+    async upload(server) {
         let workerFile = this.uploadWorkerFile || new URL('upload.js', import.meta.url);
         this.#debug('Starting ' + this.#streams + ' upload streams with URL '
-            + serverURL.toString());
+            + server.url);
 
         // Set callbacks.
         this.callbacks = {
@@ -399,12 +411,12 @@ export class Client {
 
         let workerPromises = [];
         for (let i = 0; i < this.#streams; i++) {
-            workerPromises.push(this.runWorker('upload', workerFile, serverURL, i));
+            workerPromises.push(this.runWorker('upload', workerFile, server, i));
         }
         await Promise.all(workerPromises);
     }
 
-    runWorker(testType, workerfile, serverURL, streamID) {
+    runWorker(testType, workerfile, server, streamID) {
         const worker = new Worker(workerfile);
 
         // Create a Promise that will be resolved when the worker terminates
@@ -424,12 +436,14 @@ export class Client {
         // the worker and resolve the promise after the expected duration + 1s.
         setTimeout(() => worker.resolve(0), this.#duration + 1000);
 
-
         worker.onmessage = (ev) => {
             this.#handleWorkerEvent(ev, testType, streamID, worker);
         };
+
+        this.callbacks.onStart(server);
+
         worker.postMessage({
-            url: serverURL.toString(),
+            url: server.url.toString(),
             bytes: this.#byteLimit
         });
 
