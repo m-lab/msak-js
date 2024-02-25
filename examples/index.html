@@ -8,18 +8,28 @@
 </head>
 
 <body>
+    <div id="server-dl"></div>
     <div id="goodput-dl"></div>
+    <div id="server-ul"></div>
     <div id="goodput-ul"></div>
 
     <script src="../dist/msak.js" type="text/javascript"></script>
     <script>
         m = new msak.Client("msakjs-example", "0.1.0", {
+            onDownloadStart: (server) => {
+                document.getElementById("server-dl").innerHTML = "Server: " +
+                    `${server.machine} (${server.location.city}, ${server.location.country})`;
+            },
             onDownloadResult: (result) => {
                 document.getElementById("goodput-dl").innerHTML = "Download: " +
                     result.goodput.toFixed(2) + " Mb/s";
             },
             onDownloadMeasurement: (measurement) => {
                 console.log(measurement);
+            },
+            onUploadStart: (server) => {
+                document.getElementById("server-ul").innerHTML = "Server: " +
+                `${server.machine} (${server.location.city}, ${server.location.country})`;
             },
             onUploadResult: (result) => {
                 document.getElementById("goodput-ul").innerHTML = "Upload: " +

@@ -1,6 +1,7 @@
 import { discoverServerURLs } from "./locate";
 import * as consts from "./consts";
 import { cb, defaultErrCallback } from "./callbacks.js";
+import { UAParser } from "ua-parser-js";
 
 /**
  * Client is a client for the MSAK test protocol.
@@ -19,19 +20,25 @@ export class Client {
     #locateCache = [];
 
     /**
-     * Bytes received for each stream.
+     * Application-level bytes received for each stream.
      * Streams are identifed by the array index.
-     * @type {Array}
+     * @type {number[]}
      */
     #bytesReceivedPerStream = [];
 
     /**
-     * Bytes sent for each stream.
+     * Application-level bytes sent for each stream.
      * Streams are identifed by the array index.
-     * @type {Array}
+     * @type {number[]}
      */
     #bytesSentPerStream = [];
 
+    /**
+     * Last TCPInfo object received for each stream.
+     * Streams are identifed by the array index.
+     * @type {Object[]}
+     */
+    #lastTCPInfoPerStream = [];
 
     /**
      *
@@ -147,6 +154,17 @@ export class Client {
         sp.set("client_library_name", consts.LIBRARY_NAME);
         sp.set("client_library_version", consts.LIBRARY_VERSION);
 
+        // Extract metadata from the UA.
+        const parser = new UAParser(navigator.userAgent);
+        if (parser.getBrowser().name)
+            sp.set("client_browser", parser.getBrowser().name.toLowerCase());
+        if (parser.getOS().name)
+            sp.set("client_os", parser.getOS().name.toLowerCase());
+        if (parser.getDevice().type)
+            sp.set("client_device", parser.getDevice().type.toLowerCase());
+        if (parser.getCPU().architecture)
+            sp.set("client_arch", parser.getCPU().architecture.toLowerCase());
+
         // Set protocol options.
         sp.set("streams", this.#streams.toString());
         sp.set("cc", this.#cc);
@@ -175,8 +193,8 @@ export class Client {
         uploadURL.protocol = this.#protocol;
 
         return {
-            "///throughput/v1/download": downloadURL.toString(),
-            "///throughput/v1/upload": uploadURL.toString()
+            download: downloadURL.toString(),
+            upload: uploadURL.toString()
         };
     }
 
@@ -203,6 +221,20 @@ export class Client {
         if (message.type == 'measurement') {
             let measurement;
             let source = "";
+            let parsedMeasurement;
+
+            // If this is a server-side measurement, read data from TCPInfo
+            // regardless of the test direction.
+            if (message.server) {
+                // Keep the parsed measurement aside to avoid calling JSON.parse
+                // twice in case this is an upload.
+                parsedMeasurement = JSON.parse(message.server);
+
+                if (parsedMeasurement.TCPInfo) {
+                    this.#lastTCPInfoPerStream[id] = parsedMeasurement.TCPInfo;
+                }
+            }
+
             switch (testType) {
                 case 'download':
                     if (message.client) {
@@ -213,7 +245,7 @@ export class Client {
                 case 'upload':
                     if (message.server) {
                         source = 'server';
-                        measurement = JSON.parse(message.server);
+                        measurement = parsedMeasurement;
                     }
                     break;
                 default:
@@ -229,12 +261,25 @@ export class Client {
                 const aggregateGoodput = this.#bytesReceivedPerStream.reduce((a, b) => a + b, 0) /
                     elapsed / 1e6 * 8;
 
+                // Compute the average retransmission of all streams.
+                let avgRetrans = 0;
+                if (this.#lastTCPInfoPerStream.length > 0) {
+                    avgRetrans = this.#lastTCPInfoPerStream.reduce((a, b) => a + b.BytesRetrans, 0) /
+                        this.#lastTCPInfoPerStream.reduce((a, b) => a + b.BytesSent, 0);
+                }
+
                 this.#debug('stream #' + id + ' elapsed ' + (measurement.ElapsedTime / 1e6).toFixed(2) + 's' +
                     ' application r/w: ' +
                     this.#bytesReceivedPerStream[id] + '/' +
                     this.#bytesSentPerStream[id] + ' bytes' +
                     ' stream goodput: ' + goodput.toFixed(2) + ' Mb/s' +
-                    ' aggr goodput: ' + aggregateGoodput.toFixed(2) + ' Mb/s');
+                    ' aggr goodput: ' + aggregateGoodput.toFixed(2) + ' Mb/s' +
+                    ' stream minRTT: ' + (this.#lastTCPInfoPerStream[id] !== undefined ?
+                            this.#lastTCPInfoPerStream[id].MinRTT : "n/a") +
+                    ' retrans: ' + (this.#lastTCPInfoPerStream[id] !== undefined ?
+                            this.#lastTCPInfoPerStream[id].BytesRetrans /
+                            this.#lastTCPInfoPerStream[id].BytesSent : "n/a") +
+                    ' avg retrans: ' + avgRetrans);
 
                 this.callbacks.onMeasurement({
                     elapsed: elapsed,
@@ -246,29 +291,33 @@ export class Client {
 
                 this.callbacks.onResult({
                     elapsed: elapsed,
-                    goodput: aggregateGoodput
+                    goodput: aggregateGoodput,
+                    retransmission: avgRetrans,
+                    minRTT: Math.min(this.#lastTCPInfoPerStream.map(x => x.MinRTT)),
                 });
             }
         }
     }
 
     /**
-     * Retrieves the next download/upload URL pair from the Locate service. On
-     * the first invocation, it requests new URLs for nearby servers from the
-     * Locate service. On subsequent invocations, it returns the next cached
-     * result.
+     * Retrieves the next download/upload server from the Locate service. On
+     * the first invocation, it requests new nearby servers  from the Locate
+     * service. On subsequent invocations, it returns the next cached result.
      *
-     * All the returned URLs include protocol options and metadata in the
-     * querystring.
-     * @returns A map of two URLs - one for download, one for upload.
+     * All the returned download/upload URLs include protocol options and
+     * metadata in the querystring.
+     *
+     * @returns {Object} An object containing download/upload URLs and
+     * location/machine metadata.
      */
-    async #nextURLsFromLocate() {
+    async #nextServerFromLocate() {
         /**
-         * Returns URLs for the download and upload endpoints including all
-         * querystring parameters.
-         * @returns {Object}  A map of URLs for the download and upload.
+         * Gets the next result from the locate cache and adds metadata to the
+         * download/upload URLs.
+         * @returns {Object} An object containing download/upload URLs and
+         * location/machine metadata.
          */
-        let makeURLs = () => {
+        let getFromCache = () => {
             const res = this.#locateCache.shift()
 
             const downloadURL = new URL(res.urls[this.#protocol + '://' + consts.DOWNLOAD_PATH]);
@@ -278,8 +327,10 @@ export class Client {
             uploadURL.search = this.#setSearchParams(uploadURL.searchParams);
 
             return {
-                "///throughput/v1/download": downloadURL,
-                "///throughput/v1/upload": uploadURL
+                location: res.location,
+                machine: res.machine,
+                download: downloadURL,
+                upload: uploadURL
             };
         }
 
@@ -287,9 +338,9 @@ export class Client {
         if (this.#locateCache.length == 0) {
             const results = await discoverServerURLs(this.clientName, this.clientVersion)
             this.#locateCache = results;
-            return makeURLs();
+            return getFromCache();
         } else {
-            return makeURLs();
+            return getFromCache();
         }
     }
 
@@ -297,31 +348,33 @@ export class Client {
 
     /**
      *
-     * @param {string} [server] - The server to connect to.  If not specified,
+     * @param {string} [serverStr] - The server to connect to.  If not specified,
      * will query the Locate service to get a nearby server.
      */
-    async start(server) {
-        let serverURLs;
-        if (server) {
-            serverURLs = this.#makeURLPairForServer(server);
+    async start(serverStr) {
+        let server;
+        if (serverStr) {
+            server = this.#makeURLPairForServer(serverStr);
         } else {
-            serverURLs = await this.#nextURLsFromLocate();
+            server = await this.#nextServerFromLocate();
         }
-        await this.download(serverURLs['//' + consts.DOWNLOAD_PATH]);
-        await this.upload(serverURLs['//' + consts.UPLOAD_PATH]);
+
+        await this.download(server);
+        await this.upload(server);
     }
 
     /**
-     * @param {string} serverURL
+     * @param {Object} server
      */
-    async download(serverURL) {
+    async download(server) {
         let workerFile = this.downloadWorkerFile || new URL('download.js', import.meta.url);
         this.#debug('Starting ' + this.#streams + ' download streams with URL '
-            + serverURL.toString());
+            + server.download);
 
         // Set callbacks.
         this.callbacks = {
             ...this.callbacks,
+            onStart: cb('onDownloadStart', this.callbacks),
             onResult: cb('onDownloadResult', this.callbacks),
             onMeasurement: cb('onDownloadMeasurement', this.callbacks),
             onError: cb('onError', this.callbacks, defaultErrCallback),
@@ -330,23 +383,25 @@ export class Client {
         // Reset byte counters and start time.
         this.#bytesReceivedPerStream = [];
         this.#bytesSentPerStream = [];
+        this.#lastTCPInfoPerStream = [];
         this.#startTime = undefined;
 
         let workerPromises = [];
         for (let i = 0; i < this.#streams; i++) {
-            workerPromises.push(this.runWorker('download', workerFile, serverURL, i));
+            workerPromises.push(this.runWorker('download', workerFile, server, i));
         }
         await Promise.all(workerPromises);
     }
 
-    async upload(serverURL) {
+    async upload(server) {
         let workerFile = this.uploadWorkerFile || new URL('upload.js', import.meta.url);
         this.#debug('Starting ' + this.#streams + ' upload streams with URL '
-            + serverURL.toString());
+            + server.upload);
 
         // Set callbacks.
         this.callbacks = {
             ...this.callbacks,
+            onStart: cb('onUploadStart', this.callbacks),
             onResult: cb('onUploadResult', this.callbacks),
             onMeasurement: cb('onUploadMeasurement', this.callbacks),
             onError: cb('onError', this.callbacks, defaultErrCallback),
@@ -355,16 +410,17 @@ export class Client {
         // Reset byte counters and start time.
         this.#bytesReceivedPerStream = [];
         this.#bytesSentPerStream = [];
+        this.#lastTCPInfoPerStream = [];
         this.#startTime = undefined;
 
         let workerPromises = [];
         for (let i = 0; i < this.#streams; i++) {
-            workerPromises.push(this.runWorker('upload', workerFile, serverURL, i));
+            workerPromises.push(this.runWorker('upload', workerFile, server, i));
         }
         await Promise.all(workerPromises);
     }
 
-    runWorker(testType, workerfile, serverURL, streamID) {
+    runWorker(testType, workerfile, server, streamID) {
         const worker = new Worker(workerfile);
 
         // Create a Promise that will be resolved when the worker terminates
@@ -384,12 +440,14 @@ export class Client {
         // the worker and resolve the promise after the expected duration + 1s.
         setTimeout(() => worker.resolve(0), this.#duration + 1000);
 
-
         worker.onmessage = (ev) => {
             this.#handleWorkerEvent(ev, testType, streamID, worker);
         };
+
+        this.callbacks.onStart(server);
+
         worker.postMessage({
-            url: serverURL.toString(),
+            url: server[testType].toString(),
             bytes: this.#byteLimit
         });
 
