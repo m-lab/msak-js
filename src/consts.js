@@ -1,4 +1,4 @@
-export const LIBRARY_NAME = 'msak-js', LIBRARY_VERSION = '0.3.0';
+export const LIBRARY_NAME = 'msak-js', LIBRARY_VERSION = '0.3.1';
 export const DEFAULT_PROTOCOL = 'wss';
 export const DEFAULT_STREAMS = 2;
 export const DEFAULT_CC = 'bbr';
