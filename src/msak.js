@@ -293,7 +293,7 @@ export class Client {
                     elapsed: elapsed,
                     goodput: aggregateGoodput,
                     retransmission: avgRetrans,
-                    minRTT: Math.min(this.#lastTCPInfoPerStream.map(x => x.MinRTT)),
+                    minRTT: Math.min(...this.#lastTCPInfoPerStream.map(x => x.MinRTT)),
                 });
             }
         }
