@@ -78,6 +78,14 @@ const uploadTest = function (sock, byteLimit, now) {
         uploader(data, start, end, start, 0);
     };
 
+		const safeSend = (data) => {
+			if (sock && sock.readyState === WebSocket.OPEN) {
+					sock.send(data);
+					return true;
+			}
+			return false;
+		};
+
     /**
      * uploader is the main loop that uploads data in the web browser. It must
      * carefully balance a bunch of factors:
@@ -112,12 +120,12 @@ const uploadTest = function (sock, byteLimit, now) {
             return;
         }
         const t = now();
-        if (t >= end) {
-            sock.close();
-            // send one last measurement.
-            // TODO
-            return;
-        }
+				if (t >= end) {
+						if (sock.readyState === WebSocket.OPEN) {
+								sock.close();
+						}
+						return;
+				}
 
         // Check if we are over the limit and, if so, stop the uploader loop.
         // The server is going to close the connection after the byte limit has
@@ -131,8 +139,9 @@ const uploadTest = function (sock, byteLimit, now) {
         // data to send. The maximum buffer size is 8 * 8MB - 1 byte ~= 64M.
         const desiredBuffer = 7 * data.length;
         if (sock.bufferedAmount < desiredBuffer) {
-            sock.send(data);
-            bytesSent += data.length;
+						if (safeSend(data)) {
+								bytesSent += data.length;
+						}
         }
 
         // Message size is doubled after the first 16 messages, and subsequently
@@ -161,8 +170,9 @@ const uploadTest = function (sock, byteLimit, now) {
             };
 
             const measurementStr = JSON.stringify(measurement);
-            sock.send(measurementStr);
-            bytesSent += measurementStr.length;
+						if (safeSend(measurementStr)) {
+							bytesSent += measurementStr.length;
+						}
 
             postMessage({
                 type: 'measurement',
