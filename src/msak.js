@@ -205,6 +205,17 @@ export class Client {
                 this.#startTime = performance.now();
                 this.#debug('setting global start time to ' + performance.now());
             }
+            // Clear the connection timeout now that the WebSocket is open.
+            if (worker._connTimeout) {
+                clearTimeout(worker._connTimeout);
+                worker._connTimeout = null;
+            }
+            // Set the safety timeout once the WebSocket is connected, so
+            // that handshake time does not eat into the test duration.
+            if (!worker._safetyTimeoutSet) {
+                worker._safetyTimeoutSet = true;
+                setTimeout(() => worker.resolve(0), this.#duration + 1000);
+            }
         }
 
         if (message.type == 'error') {
@@ -289,11 +300,18 @@ export class Client {
                     source: source,
                 });
 
+                // If no messages containing TCPInfo were received, the
+                // minRTT might not be available.
+                const validRTTs = this.#lastTCPInfoPerStream
+                    .filter(x => x && typeof x.MinRTT === 'number')
+                    .map(x => x.MinRTT);
+                const minRTT = validRTTs.length > 0 ? Math.min(...validRTTs) : null;
+
                 this.callbacks.onResult({
                     elapsed: elapsed,
                     goodput: aggregateGoodput,
                     retransmission: avgRetrans,
-                    minRTT: Math.min(...this.#lastTCPInfoPerStream.map(x => x.MinRTT)),
+                    minRTT: minRTT,
                 });
             }
         }
@@ -436,9 +454,12 @@ export class Client {
             };
         });
 
-        // If the server did not close the connection already by then, terminate
-        // the worker and resolve the promise after the expected duration + 1s.
-        setTimeout(() => worker.resolve(0), this.#duration + 1000);
+        // Connection timeout: if the WebSocket never opens (and never
+        // fires onerror/onclose), resolve after 10s to prevent the
+        // promise from hanging indefinitely. The per-test safety
+        // timeout is set on the 'connect' event in #handleWorkerEvent.
+        const connTimeout = setTimeout(() => worker.resolve(0), 10000);
+        worker._connTimeout = connTimeout;
 
         worker.onmessage = (ev) => {
             this.#handleWorkerEvent(ev, testType, streamID, worker);
@@ -448,7 +469,8 @@ export class Client {
 
         worker.postMessage({
             url: server[testType].toString(),
-            bytes: this.#byteLimit
+            bytes: this.#byteLimit,
+            duration: this.#duration
         });
 
         return workerPromise;
