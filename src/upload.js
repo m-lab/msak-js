@@ -7,6 +7,7 @@ const workerMain = function (ev) {
     // Establish WebSocket connection to the URL passed by the caller.
     const url = new URL(ev.data.url);
     const byteLimit = ev.data.bytes || 0;
+    const duration = ev.data.duration || 10000;
 
     console.log("Connecting to " + url);
     const sock = new WebSocket(url, 'net.measurementlab.throughput.v1');
@@ -22,10 +23,10 @@ const workerMain = function (ev) {
     } else {
         now = () => Date.now();
     }
-    uploadTest(sock, byteLimit, now);
+    uploadTest(sock, byteLimit, duration, now);
 };
 
-const uploadTest = function (sock, byteLimit, now) {
+const uploadTest = function (sock, byteLimit, duration, now) {
     let closed = false;
     let bytesReceived;
     let bytesSent;
@@ -66,7 +67,6 @@ const uploadTest = function (sock, byteLimit, now) {
         const initialMessageSize = 8192; /* (1<<13) = 8kBytes */
         const data = new Uint8Array(initialMessageSize);
         const start = now(); // ms since epoch
-        const duration = 10000; // ms
         const end = start + duration; // ms since epoch
 
         postMessage({
