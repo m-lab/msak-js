@@ -354,12 +354,9 @@ export class Client {
 
         // If this is the first call or the cache is empty, query the Locate service.
         if (this.#locateCache.length == 0) {
-            const results = await discoverServerURLs(this.clientName, this.clientVersion)
-            this.#locateCache = results;
-            return getFromCache();
-        } else {
-            return getFromCache();
+            this.#locateCache = await discoverServerURLs(this.clientName, this.clientVersion);
         }
+        return getFromCache();
     }
 
     // Public methods
