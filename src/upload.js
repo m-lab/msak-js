@@ -40,10 +40,10 @@ const uploadTest = function (sock, byteLimit, duration, now) {
         }
     };
 
-    sock.onerror = function (ev) {
+    sock.onerror = function () {
         postMessage({
             type: 'error',
-            error: ev.type,
+            error: 'WebSocket error (' + url.host + ')',
         });
     };
 
