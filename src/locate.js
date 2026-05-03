@@ -31,14 +31,20 @@ export async function discoverServerURLs(clientName, clientVersion, lbBaseURL) {
 
     lbURL.search = params.toString();
 
-    const response = await fetch(lbURL).catch((err) => {
-        throw new Error(err);
-    });
+    let response;
+    try {
+        response = await fetch(lbURL);
+    } catch (err) {
+        throw new Error(`Locate fetch failed (${lbURL}): ${err.message}`);
+    }
+
+    if (!response.ok) {
+        throw new Error(`Locate returned HTTP ${response.status} (${lbURL})`);
+    }
 
     const js = await response.json();
-    if (!("results" in js)) {
-        console.log(`Could not understand response from ${lbURL}: ${js}`);
-        return {};
+    if (!("results" in js) || !Array.isArray(js.results) || js.results.length === 0) {
+        throw new Error(`Locate returned no results (${lbURL})`);
     }
 
     // TODO: do not discard unused results. If the first server is unavailable
@@ -48,8 +54,6 @@ export async function discoverServerURLs(clientName, clientVersion, lbBaseURL) {
     // in cases where we have a single pod in a metro, that pod is used to
     // run the measurement. When there are multiple pods in the same metro,
     // they are randomized by the load balancer already.
-
-    console.log(js.results);
 
     return js.results;
 }
