@@ -23,10 +23,10 @@ const workerMain = function (ev) {
     } else {
         now = () => Date.now();
     }
-    uploadTest(sock, byteLimit, duration, now);
+    uploadTest(sock, url.host, byteLimit, duration, now);
 };
 
-const uploadTest = function (sock, byteLimit, duration, now) {
+const uploadTest = function (sock, host, byteLimit, duration, now) {
     let closed = false;
     let bytesReceived;
     let bytesSent;
@@ -40,10 +40,10 @@ const uploadTest = function (sock, byteLimit, duration, now) {
         }
     };
 
-    sock.onerror = function (ev) {
+    sock.onerror = function () {
         postMessage({
             type: 'error',
-            error: ev.type,
+            error: 'WebSocket error (' + host + ')',
         });
     };
 

@@ -18,10 +18,10 @@ const workerMain = function (ev) {
     } else {
         now = () => Date.now();
     }
-    downloadTest(sock, byteLimit, now);
+    downloadTest(sock, url.host, byteLimit, now);
 };
 
-const downloadTest = function(sock, byteLimit, now) {
+const downloadTest = function(sock, host, byteLimit, now) {
 
     let start;
     let previous;
@@ -47,10 +47,10 @@ const downloadTest = function(sock, byteLimit, now) {
         });
     };
 
-    sock.onerror = function(ev) {
+    sock.onerror = function() {
         postMessage({
             type: 'error',
-            error: ev.type,
+            error: 'WebSocket error (' + host + ')',
         });
     };
 
